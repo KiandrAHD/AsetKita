@@ -1,21 +1,22 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Route, Routes } from "react-router-dom";
 
 import Landing from "@/pages/Landing/Landing";
 import About from "@/pages/Landing/about";
-import Security from "@/pages/Security/security";
-import Contact from "@/pages/Contact/contact";
+import Security from "@/pages/Landing/security";
+import Contact from "@/pages/Landing/contact";
 
-import Login from "@/pages/Login/login";
-import Register from "@/pages/Register/register";
-import Demo from "@/pages/Demo/demo";
+import Login from "@/pages/Login_Register_Demo/login";
+import Register from "@/pages/Login_Register_Demo/register";
+import Demo from "@/pages/Login_Register_Demo/demo";
 
 import Dashboard from "@/pages/Dashboard/dashboard";
-import Portfolio from "@/pages/Portfolio/portfolio";
-import Market from "@/pages/Market/market";
-import AI from "@/pages/AI/ai";
-import Profile from "@/pages/Profile/profile";
-import Settings from "@/pages/Settings/settings";
-import Notification from "@/pages/Notification/notification";
+import Portfolio from "@/pages/Dashboard/portofolio";
+import Market from "@/pages/Dashboard/market";
+import Profile from "@/pages/Dashboard/profile";
+import Settings from "@/pages/Dashboard/settings";
+import Notification from "@/pages/Dashboard/notification";
+
+const AI = () => <div>AI Page</div>;
 
 export default function AppRouter() {
     return (
