@@ -1,6 +1,6 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 
-import Landing from "@/pages/Landing/Landing";
+import Landing from "@/pages/Landing/landing";
 import About from "@/pages/Landing/about";
 import Security from "@/pages/Landing/security";
 import Contact from "@/pages/Landing/contact";
