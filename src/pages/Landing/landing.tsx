@@ -125,7 +125,7 @@ export default function Landing() {
                     <div className="hidden items-center gap-8 text-sm text-slate-300 md:flex">
                         {[
                             ["Home", "#home"],
-                            ["About Us", "#about"],
+                            ["About Us", "/about"],
                             ["Security", "#security"],
                             ["FAQ", "#faq"],
                             ["Contact", "#contact"],
@@ -167,7 +167,7 @@ export default function Landing() {
                         <div className="flex flex-col gap-3 text-sm text-slate-300">
                             {[
                                 ["Home", "#home"],
-                                ["About Us", "#about"],
+                                ["About Us", "/about"],
                                 ["Security", "#security"],
                                 ["FAQ", "#faq"],
                                 ["Contact", "#contact"],
