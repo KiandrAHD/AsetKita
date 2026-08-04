@@ -1,0 +1,23 @@
+rules_version = '2';
+// Untuk produksi, aktifkan Firebase App Check dan rate limiting/anti-spam di lapisan backend.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId && request.auth.token.demo != true;
+      allow update: if request.auth != null && request.auth.uid == userId && request.auth.token.demo != true
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastLogin', 'updatedAt']);
+      allow create, delete: if false;
+    }
+    match /emailOtps/{document=**} { allow read, write: if false; }
+    match /passwordResetTickets/{document=**} { allow read, write: if false; }
+    match /contactMessages/{messageId} {
+      allow create: if request.resource.data.keys().hasOnly(['name', 'email', 'subject', 'message', 'status', 'createdAt', 'uid'])
+        && request.resource.data.name is string && request.resource.data.name.size() >= 2 && request.resource.data.name.size() <= 100
+        && request.resource.data.email is string && request.resource.data.email.size() <= 254
+        && request.resource.data.subject is string && request.resource.data.subject.size() >= 3 && request.resource.data.subject.size() <= 150
+        && request.resource.data.message is string && request.resource.data.message.size() >= 10 && request.resource.data.message.size() <= 2000
+        && request.resource.data.status == 'baru';
+      allow read, update, delete: if false;
+    }
+  }
+}
