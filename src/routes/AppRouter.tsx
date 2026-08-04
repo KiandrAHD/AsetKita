@@ -4,6 +4,7 @@ import Landing from "@/pages/Landing/landing";
 import About from "@/pages/Landing/about";
 import Security from "@/pages/Landing/security";
 import Contact from "@/pages/Landing/contact";
+import Faq from "@/pages/Landing/faq";
 
 import Login from "@/pages/Login_Register_Demo/login";
 import Register from "@/pages/Login_Register_Demo/register";
@@ -27,6 +28,7 @@ export default function AppRouter() {
                 <Route path="/about" element={<About />} />
                 <Route path="/security" element={<Security />} />
                 <Route path="/contact" element={<Contact />} />
+                <Route path="/faq" element={<Faq />} />
 
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />

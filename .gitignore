@@ -13,6 +13,7 @@ dist-ssr
 *.local
 
 .env
+firestore.rules
 
 # Editor directories and files
 .vscode/*
