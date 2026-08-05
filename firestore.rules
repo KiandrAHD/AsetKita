@@ -8,6 +8,22 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastLogin', 'updatedAt']);
       allow create, delete: if false;
     }
+    match /wallets/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId && request.auth.token.demo != true;
+      allow write: if false;
+    }
+    match /portfolios/{portfolioId} {
+      allow read: if request.auth != null && request.auth.token.demo != true && resource.data.uid == request.auth.uid;
+      allow write: if false;
+      match /holdings/{holdingId} {
+        allow read: if request.auth != null && request.auth.token.demo != true && get(/databases/$(database)/documents/portfolios/$(portfolioId)).data.uid == request.auth.uid;
+        allow write: if false;
+      }
+    }
+    match /transactions/{transactionId} { allow read: if request.auth != null && request.auth.token.demo != true && resource.data.uid == request.auth.uid; allow write: if false; }
+    match /watchlists/{watchlistId} { allow read: if request.auth != null && request.auth.token.demo != true && resource.data.uid == request.auth.uid; allow write: if false; }
+    match /notifications/{notificationId} { allow read: if request.auth != null && request.auth.token.demo != true && resource.data.uid == request.auth.uid; allow write: if false; }
+    match /marketCache/{document=**} { allow read, write: if false; }
     match /emailOtps/{document=**} { allow read, write: if false; }
     match /passwordResetTickets/{document=**} { allow read, write: if false; }
     match /contactMessages/{messageId} {

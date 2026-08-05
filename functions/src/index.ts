@@ -11,6 +11,8 @@ const db = getFirestore();
 const adminAuth = getAuth();
 const resendKey = defineSecret("RESEND_API_KEY");
 const otpFromEmail = defineSecret("OTP_FROM_EMAIL");
+const newsDataKey = defineSecret("NEWSDATA_API_KEY");
+const finnhubKey = defineSecret("FINNHUB_API_KEY");
 const REGION = "asia-southeast2";
 const TTL_MINUTES = 10;
 const RESEND_SECONDS = 60;
@@ -69,7 +71,8 @@ export const completeRegistration = onCall({ region: REGION }, async (request) =
     try { user = await adminAuth.createUser({ email: normalizedEmail, password: verifiedPassword, displayName: verifiedNickname.trim(), emailVerified: true }); } catch (error) { if (typeof error === "object" && error && "code" in error && String(error.code).includes("email-already-exists")) fail("Email ini sudah terdaftar.", "failed-precondition"); throw error; }
     const now = FieldValue.serverTimestamp();
     const photoURL = `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(verifiedNickname.trim())}&backgroundColor=0b1220&fontFamily=Arial`;
-    await db.collection("users").doc(user.uid).set({ uid: user.uid, namaLengkap: verifiedName.trim(), namaPanggilan: verifiedNickname.trim(), email: normalizedEmail, nomorHP: verifiedPhone, photoURL, role: "investor", status: "aktif", emailVerified: true, createdAt: now, updatedAt: now, lastLogin: now, provider: "password" });
+    const portfolioId = `${user.uid}_utama`;
+    const batch = db.batch(); batch.set(db.collection("users").doc(user.uid), { uid: user.uid, namaLengkap: verifiedName.trim(), namaPanggilan: verifiedNickname.trim(), email: normalizedEmail, nomorHP: verifiedPhone, photoURL, role: "investor", status: "aktif", emailVerified: true, financialScore: 0, primaryPortfolioId: portfolioId, createdAt: now, updatedAt: now, lastLogin: now, provider: "password" }); batch.set(db.collection("wallets").doc(user.uid), { uid: user.uid, balance: 0, currency: "IDR", updatedAt: now, createdAt: now }); batch.set(db.collection("portfolios").doc(portfolioId), { uid: user.uid, name: "Portofolio Utama", type: "primary", createdAt: now, updatedAt: now }); await batch.commit();
     return { customToken: await adminAuth.createCustomToken(user.uid) };
 });
 
@@ -99,4 +102,26 @@ export const createDemoToken = onCall({ region: REGION }, async (request) => {
     const nickname = request.data?.nickname;
     if (typeof nickname !== "string" || nickname.trim().length < 2 || nickname.trim().length > 30) fail("Nama panggilan harus terdiri dari 2–30 karakter.");
     return { customToken: await adminAuth.createCustomToken("asetkita-demo", { demo: true, nickname: nickname.trim() }) };
+});
+
+const CACHE_TTL = 15 * 60 * 1000;
+const marketFallback = [{ symbol: "BTC", name: "Bitcoin", price: 1715000000, changePercent: 2.34 }, { symbol: "ETH", name: "Ethereum", price: 56800000, changePercent: -1.12 }, { symbol: "BBCA", name: "Bank Central Asia", price: 9450, changePercent: 0.86 }, { symbol: "AAPL", name: "Apple Inc.", price: 3200000, changePercent: 1.45 }];
+async function cached<T>(id: string, factory: () => Promise<T>) {
+    const ref = db.collection("marketCache").doc(id); const snapshot = await ref.get(); const cachedAt = snapshot.data()?.cachedAt as Timestamp | undefined;
+    if (cachedAt && Date.now() - cachedAt.toMillis() < CACHE_TTL) return snapshot.data()?.value as T;
+    const value = await factory(); await ref.set({ value, cachedAt: FieldValue.serverTimestamp() }); return value;
+}
+export const getMarketSnapshot = onCall({ region: REGION, secrets: [finnhubKey] }, async () => {
+    try { return { assets: await cached("summary", async () => { const coins = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=idr&include_24hr_change=true").then((response) => response.ok ? response.json() : Promise.reject(new Error("CoinGecko unavailable"))) as Record<string, { idr: number; idr_24h_change: number }>;
+        const assets = [{ symbol: "BTC", name: "Bitcoin", price: coins.bitcoin.idr, changePercent: coins.bitcoin.idr_24h_change }, { symbol: "ETH", name: "Ethereum", price: coins.ethereum.idr, changePercent: coins.ethereum.idr_24h_change }];
+        const token = finnhubKey.value(); if (!token) return [...assets, ...marketFallback.slice(2)];
+        const quote = await fetch(`https://finnhub.io/api/v1/quote?symbol=AAPL&token=${encodeURIComponent(token)}`).then((response) => response.ok ? response.json() : null) as { c?: number; dp?: number } | null;
+        return [...assets, { symbol: "AAPL", name: "Apple Inc.", price: Math.round((quote?.c ?? 220) * 16000), changePercent: quote?.dp ?? 0 }, marketFallback[2]];
+    }) }; } catch { return { assets: marketFallback }; }
+});
+export const getLatestNews = onCall({ region: REGION, secrets: [newsDataKey] }, async () => {
+    try { return { news: await cached("news", async () => { const key = newsDataKey.value(); if (!key) return []; const url = `https://newsdata.io/api/1/latest?apikey=${encodeURIComponent(key)}&q=crypto%20bitcoin%20ethereum%20stocks%20AI%20economy&language=en`;
+        const response = await fetch(url); if (!response.ok) throw new Error("NewsData unavailable"); const body = await response.json() as { results?: Array<{ article_id?: string; title?: string; source_name?: string; pubDate?: string; link?: string; category?: string[] }> };
+        return (body.results ?? []).filter((item) => item.title && item.link).slice(0, 8).map((item, index) => ({ id: item.article_id ?? String(index), title: item.title ?? "Berita pasar", source: item.source_name ?? "NewsData", publishedAt: item.pubDate ?? "Baru saja", url: item.link ?? "#", category: item.category?.[0] }));
+    }) }; } catch { return { news: [] }; }
 });

@@ -1,5 +1,2 @@
-function Profile() {
-    return <h1>Landing Page</h1>
-}
-
-export default Profile;
+import PlaceholderPage from "./PlaceholderPage";
+export default function Profile() { return <PlaceholderPage title="Profile" />; }

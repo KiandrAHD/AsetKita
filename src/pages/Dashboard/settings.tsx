@@ -1,5 +1,2 @@
-function Settings() {
-    return <h1>Setting</h1>
-}
-
-export default Settings;
+import PlaceholderPage from "./PlaceholderPage";
+export default function Settings() { return <PlaceholderPage title="Pengaturan" />; }

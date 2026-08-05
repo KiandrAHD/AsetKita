@@ -1,5 +1,2 @@
-function Portfolio() {
-    return <h1>Portofolio</h1>
-}
-
-export default Portfolio;
+import PlaceholderPage from "./PlaceholderPage";
+export default function Portfolio() { return <PlaceholderPage title="Portfolio" />; }

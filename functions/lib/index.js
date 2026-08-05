@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.createDemoToken = exports.completePasswordReset = exports.verifyPasswordResetOtp = exports.completeRegistration = exports.requestEmailOtp = void 0;
+exports.getLatestNews = exports.getMarketSnapshot = exports.createDemoToken = exports.completePasswordReset = exports.verifyPasswordResetOtp = exports.completeRegistration = exports.requestEmailOtp = void 0;
 const node_crypto_1 = require("node:crypto");
 const app_1 = require("firebase-admin/app");
 const auth_1 = require("firebase-admin/auth");
@@ -13,6 +13,8 @@ const db = (0, firestore_1.getFirestore)();
 const adminAuth = (0, auth_1.getAuth)();
 const resendKey = (0, params_1.defineSecret)("RESEND_API_KEY");
 const otpFromEmail = (0, params_1.defineSecret)("OTP_FROM_EMAIL");
+const newsDataKey = (0, params_1.defineSecret)("NEWSDATA_API_KEY");
+const finnhubKey = (0, params_1.defineSecret)("FINNHUB_API_KEY");
 const REGION = "asia-southeast2";
 const TTL_MINUTES = 10;
 const RESEND_SECONDS = 60;
@@ -86,7 +88,12 @@ exports.completeRegistration = (0, https_1.onCall)({ region: REGION }, async (re
     }
     const now = firestore_1.FieldValue.serverTimestamp();
     const photoURL = `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(verifiedNickname.trim())}&backgroundColor=0b1220&fontFamily=Arial`;
-    await db.collection("users").doc(user.uid).set({ uid: user.uid, namaLengkap: verifiedName.trim(), namaPanggilan: verifiedNickname.trim(), email: normalizedEmail, nomorHP: verifiedPhone, photoURL, role: "investor", status: "aktif", emailVerified: true, createdAt: now, updatedAt: now, lastLogin: now, provider: "password" });
+    const portfolioId = `${user.uid}_utama`;
+    const batch = db.batch();
+    batch.set(db.collection("users").doc(user.uid), { uid: user.uid, namaLengkap: verifiedName.trim(), namaPanggilan: verifiedNickname.trim(), email: normalizedEmail, nomorHP: verifiedPhone, photoURL, role: "investor", status: "aktif", emailVerified: true, financialScore: 0, primaryPortfolioId: portfolioId, createdAt: now, updatedAt: now, lastLogin: now, provider: "password" });
+    batch.set(db.collection("wallets").doc(user.uid), { uid: user.uid, balance: 0, currency: "IDR", updatedAt: now, createdAt: now });
+    batch.set(db.collection("portfolios").doc(portfolioId), { uid: user.uid, name: "Portofolio Utama", type: "primary", createdAt: now, updatedAt: now });
+    await batch.commit();
     return { customToken: await adminAuth.createCustomToken(user.uid) };
 });
 exports.verifyPasswordResetOtp = (0, https_1.onCall)({ region: REGION }, async (request) => {
@@ -119,4 +126,50 @@ exports.createDemoToken = (0, https_1.onCall)({ region: REGION }, async (request
     if (typeof nickname !== "string" || nickname.trim().length < 2 || nickname.trim().length > 30)
         fail("Nama panggilan harus terdiri dari 2–30 karakter.");
     return { customToken: await adminAuth.createCustomToken("asetkita-demo", { demo: true, nickname: nickname.trim() }) };
+});
+const CACHE_TTL = 15 * 60 * 1000;
+const marketFallback = [{ symbol: "BTC", name: "Bitcoin", price: 1715000000, changePercent: 2.34 }, { symbol: "ETH", name: "Ethereum", price: 56800000, changePercent: -1.12 }, { symbol: "BBCA", name: "Bank Central Asia", price: 9450, changePercent: 0.86 }, { symbol: "AAPL", name: "Apple Inc.", price: 3200000, changePercent: 1.45 }];
+async function cached(id, factory) {
+    const ref = db.collection("marketCache").doc(id);
+    const snapshot = await ref.get();
+    const cachedAt = snapshot.data()?.cachedAt;
+    if (cachedAt && Date.now() - cachedAt.toMillis() < CACHE_TTL)
+        return snapshot.data()?.value;
+    const value = await factory();
+    await ref.set({ value, cachedAt: firestore_1.FieldValue.serverTimestamp() });
+    return value;
+}
+exports.getMarketSnapshot = (0, https_1.onCall)({ region: REGION, secrets: [finnhubKey] }, async () => {
+    try {
+        return { assets: await cached("summary", async () => {
+                const coins = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=idr&include_24hr_change=true").then((response) => response.ok ? response.json() : Promise.reject(new Error("CoinGecko unavailable")));
+                const assets = [{ symbol: "BTC", name: "Bitcoin", price: coins.bitcoin.idr, changePercent: coins.bitcoin.idr_24h_change }, { symbol: "ETH", name: "Ethereum", price: coins.ethereum.idr, changePercent: coins.ethereum.idr_24h_change }];
+                const token = finnhubKey.value();
+                if (!token)
+                    return [...assets, ...marketFallback.slice(2)];
+                const quote = await fetch(`https://finnhub.io/api/v1/quote?symbol=AAPL&token=${encodeURIComponent(token)}`).then((response) => response.ok ? response.json() : null);
+                return [...assets, { symbol: "AAPL", name: "Apple Inc.", price: Math.round((quote?.c ?? 220) * 16000), changePercent: quote?.dp ?? 0 }, marketFallback[2]];
+            }) };
+    }
+    catch {
+        return { assets: marketFallback };
+    }
+});
+exports.getLatestNews = (0, https_1.onCall)({ region: REGION, secrets: [newsDataKey] }, async () => {
+    try {
+        return { news: await cached("news", async () => {
+                const key = newsDataKey.value();
+                if (!key)
+                    return [];
+                const url = `https://newsdata.io/api/1/latest?apikey=${encodeURIComponent(key)}&q=crypto%20bitcoin%20ethereum%20stocks%20AI%20economy&language=en`;
+                const response = await fetch(url);
+                if (!response.ok)
+                    throw new Error("NewsData unavailable");
+                const body = await response.json();
+                return (body.results ?? []).filter((item) => item.title && item.link).slice(0, 8).map((item, index) => ({ id: item.article_id ?? String(index), title: item.title ?? "Berita pasar", source: item.source_name ?? "NewsData", publishedAt: item.pubDate ?? "Baru saja", url: item.link ?? "#", category: item.category?.[0] }));
+            }) };
+    }
+    catch {
+        return { news: [] };
+    }
 });

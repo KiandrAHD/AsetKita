@@ -1,5 +1,2 @@
-function Market() {
-    return <h1>Market</h1>
-}
-
-export default Market;
+import PlaceholderPage from "./PlaceholderPage";
+export default function Market() { return <PlaceholderPage title="Market" />; }

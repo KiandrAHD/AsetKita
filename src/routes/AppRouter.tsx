@@ -17,8 +17,10 @@ import Profile from "@/pages/Dashboard/profile";
 import Settings from "@/pages/Dashboard/settings";
 import Notification from "@/pages/Dashboard/notification";
 import RequireAuth from "@/components/auth/RequireAuth";
+import DashboardLayout from "@/layouts/DashboardLayout";
+import PlaceholderPage from "@/pages/Dashboard/PlaceholderPage";
 
-const AI = () => <div>AI Page</div>;
+const AI = () => <PlaceholderPage title="AI & Belajar" />;
 
 export default function AppRouter() {
     return (
@@ -35,13 +37,17 @@ export default function AppRouter() {
                 <Route path="/register" element={<Register />} />
                 <Route path="/demo" element={<Demo />} />
 
-                <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
-                <Route path="/portfolio" element={<RequireAuth><Portfolio /></RequireAuth>} />
-                <Route path="/market" element={<RequireAuth><Market /></RequireAuth>} />
-                <Route path="/ai" element={<RequireAuth><AI /></RequireAuth>} />
-                <Route path="/profile" element={<RequireAuth><Profile /></RequireAuth>} />
-                <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
-                <Route path="/notification" element={<RequireAuth><Notification /></RequireAuth>} />
+                <Route element={<RequireAuth><DashboardLayout /></RequireAuth>}>
+                    <Route path="/dashboard" element={<Dashboard />} />
+                    <Route path="/portfolio" element={<Portfolio />} />
+                    <Route path="/market" element={<Market />} />
+                    <Route path="/ai" element={<AI />} />
+                    <Route path="/profile" element={<Profile />} />
+                    <Route path="/settings" element={<Settings />} />
+                    <Route path="/notification" element={<Notification />} />
+                    <Route path="/watchlist" element={<PlaceholderPage title="Watchlist" />} />
+                    <Route path="/history" element={<PlaceholderPage title="Riwayat" />} />
+                </Route>
 
             </Routes>
         </BrowserRouter>

@@ -1,5 +1,2 @@
-function Notification() {
-    return <h1>Notification</h1>
-}
-
-export default Notification;
+import PlaceholderPage from "./PlaceholderPage";
+export default function Notification() { return <PlaceholderPage title="Notifikasi" />; }
