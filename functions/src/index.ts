@@ -4,6 +4,7 @@ import { getAuth } from "firebase-admin/auth";
 import { FieldValue, Timestamp, getFirestore } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
+import { onSchedule } from "firebase-functions/v2/scheduler";
 import { Resend } from "resend";
 
 initializeApp();
@@ -11,8 +12,6 @@ const db = getFirestore();
 const adminAuth = getAuth();
 const resendKey = defineSecret("RESEND_API_KEY");
 const otpFromEmail = defineSecret("OTP_FROM_EMAIL");
-const newsDataKey = defineSecret("NEWSDATA_API_KEY");
-const finnhubKey = defineSecret("FINNHUB_API_KEY");
 const REGION = "asia-southeast2";
 const TTL_MINUTES = 10;
 const RESEND_SECONDS = 60;
@@ -104,24 +103,32 @@ export const createDemoToken = onCall({ region: REGION }, async (request) => {
     return { customToken: await adminAuth.createCustomToken("asetkita-demo", { demo: true, nickname: nickname.trim() }) };
 });
 
-const CACHE_TTL = 15 * 60 * 1000;
-const marketFallback = [{ symbol: "BTC", name: "Bitcoin", price: 1715000000, changePercent: 2.34 }, { symbol: "ETH", name: "Ethereum", price: 56800000, changePercent: -1.12 }, { symbol: "BBCA", name: "Bank Central Asia", price: 9450, changePercent: 0.86 }, { symbol: "AAPL", name: "Apple Inc.", price: 3200000, changePercent: 1.45 }];
-async function cached<T>(id: string, factory: () => Promise<T>) {
-    const ref = db.collection("marketCache").doc(id); const snapshot = await ref.get(); const cachedAt = snapshot.data()?.cachedAt as Timestamp | undefined;
-    if (cachedAt && Date.now() - cachedAt.toMillis() < CACHE_TTL) return snapshot.data()?.value as T;
-    const value = await factory(); await ref.set({ value, cachedAt: FieldValue.serverTimestamp() }); return value;
-}
-export const getMarketSnapshot = onCall({ region: REGION, secrets: [finnhubKey] }, async () => {
-    try { return { assets: await cached("summary", async () => { const coins = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=idr&include_24hr_change=true").then((response) => response.ok ? response.json() : Promise.reject(new Error("CoinGecko unavailable"))) as Record<string, { idr: number; idr_24h_change: number }>;
-        const assets = [{ symbol: "BTC", name: "Bitcoin", price: coins.bitcoin.idr, changePercent: coins.bitcoin.idr_24h_change }, { symbol: "ETH", name: "Ethereum", price: coins.ethereum.idr, changePercent: coins.ethereum.idr_24h_change }];
-        const token = finnhubKey.value(); if (!token) return [...assets, ...marketFallback.slice(2)];
-        const quote = await fetch(`https://finnhub.io/api/v1/quote?symbol=AAPL&token=${encodeURIComponent(token)}`).then((response) => response.ok ? response.json() : null) as { c?: number; dp?: number } | null;
-        return [...assets, { symbol: "AAPL", name: "Apple Inc.", price: Math.round((quote?.c ?? 220) * 16000), changePercent: quote?.dp ?? 0 }, marketFallback[2]];
-    }) }; } catch { return { assets: marketFallback }; }
+
+type SimAsset = { id: string; symbol: string; name: string; price: number; volatility: number };
+const sim = (category: "crypto" | "stock" | "metal", rows: Array<[string, string, number]>) => rows.map(([symbol, name, ath]) => ({ id: symbol.toLowerCase().replace(".", "-"), symbol, name, price: Math.round(ath * .8 * (category === "stock" && ["bbca","bbri","bmri","tlkm","asii","bbni","bren","byan","goto","icbp","antm","klbf","unvr","untr","pgas"].includes(symbol.toLowerCase()) ? 1 : 16000)), volatility: category === "crypto" ? .05 : category === "stock" ? .02 : .01 }));
+const simulationAssets: SimAsset[] = [
+  ...sim("crypto", [["BTC","Bitcoin",108900],["ETH","Ethereum",4891],["BNB","BNB",720],["SOL","Solana",260],["XRP","XRP",3.84],["ADA","Cardano",3.1],["DOGE","Dogecoin",.73],["DOT","Polkadot",55],["LINK","Chainlink",52.88],["AVAX","Avalanche",146.22],["SHIB","Shiba Inu",.00008845],["TRX","TRON",.43],["LTC","Litecoin",412.96],["BCH","Bitcoin Cash",4355],["POL","Polygon",2.92]]),
+  ...sim("stock", [["AAPL","Apple Inc.",310],["MSFT","Microsoft Corporation",500],["NVDA","NVIDIA Corporation",135],["GOOGL","Alphabet Inc.",195],["AMZN","Amazon.com Inc.",200],["META","Meta Platforms Inc.",530],["TSLA","Tesla Inc.",230],["BRK.B","Berkshire Hathaway Inc.",450],["LLY","Eli Lilly",850],["AVGO","Broadcom",175],["JPM","JPMorgan",220],["WMT","Walmart",75],["V","Visa",275],["XOM","Exxon Mobil",120],["DIS","Disney",100],["BBCA","Bank Central Asia",6400],["BBRI","Bank Rakyat Indonesia",3050],["BMRI","Bank Mandiri",4250],["TLKM","Telkom Indonesia",2700],["ASII","Astra International",5150],["BBNI","Bank Negara Indonesia",3650],["BREN","Barito Renewables",3400],["BYAN","Bayan Resources",12100],["GOTO","GoTo",55],["ICBP","Indofood CBP",7500],["ANTM","Aneka Tambang",3100],["KLBF","Kalbe Farma",810],["UNVR","Unilever Indonesia",1850],["UNTR","United Tractors",24000],["PGAS","Perusahaan Gas Negara",1550]]),
+  ...sim("metal", [["XRH","Rhodium",29800],["XIR","Iridium",9080],["XAU","Gold",5608],["XPD","Palladium",3440],["XPT","Platinum",2290],["XOS","Osmium",1300],["XRU","Ruthenium",870],["RE","Rhenium",370],["XAG","Silver",49.51],["IN","Indium",32.6]])
+];
+const mustAuth = (request: { auth?: { uid: string; token: Record<string, unknown> } }) => { if (!request.auth || request.auth.token.demo === true) throw new HttpsError("unauthenticated", "Silakan masuk dengan akun anggota."); return request.auth.uid; };
+
+export const updateMarketSimulation = onSchedule({ region: REGION, schedule: "every 4 hours", timeZone: "Asia/Jakarta" }, async () => {
+  const batch = db.batch(); const now = Timestamp.now();
+  for (const asset of simulationAssets) { const ref = db.collection("marketPrices").doc(asset.id); const old = await ref.get(); const previous = Number(old.data()?.price ?? asset.price); const next = Math.max(1, Math.round(previous * (1 + (Math.random() * 2 - 1) * asset.volatility) * 100) / 100); batch.set(ref, { ...asset, price: next, previousPrice: previous, changePercent: Number((((next - previous) / previous) * 100).toFixed(2)), updatedAt: now }, { merge: true }); batch.set(ref.collection("history").doc(now.toMillis().toString()), { price: next, at: now, label: now.toDate().toLocaleDateString("id-ID") }); }
+  await batch.commit();
 });
-export const getLatestNews = onCall({ region: REGION, secrets: [newsDataKey] }, async () => {
-    try { return { news: await cached("news", async () => { const key = newsDataKey.value(); if (!key) return []; const url = `https://newsdata.io/api/1/latest?apikey=${encodeURIComponent(key)}&q=crypto%20bitcoin%20ethereum%20stocks%20AI%20economy&language=en`;
-        const response = await fetch(url); if (!response.ok) throw new Error("NewsData unavailable"); const body = await response.json() as { results?: Array<{ article_id?: string; title?: string; source_name?: string; pubDate?: string; link?: string; category?: string[] }> };
-        return (body.results ?? []).filter((item) => item.title && item.link).slice(0, 8).map((item, index) => ({ id: item.article_id ?? String(index), title: item.title ?? "Berita pasar", source: item.source_name ?? "NewsData", publishedAt: item.pubDate ?? "Baru saja", url: item.link ?? "#", category: item.category?.[0] }));
-    }) }; } catch { return { news: [] }; }
+
+export const executeTrade = onCall({ region: REGION }, async (request) => {
+  const uid = mustAuth(request); const { assetId, side, quantity } = request.data as { assetId?: unknown; side?: unknown; quantity?: unknown };
+  if (typeof assetId !== "string" || (side !== "buy" && side !== "sell") || typeof quantity !== "number" || !Number.isFinite(quantity) || quantity <= 0) fail("Data transaksi tidak valid.");
+  const asset = simulationAssets.find((item) => item.id === assetId); if (!asset) throw new HttpsError("invalid-argument", "Aset tidak ditemukan."); const validQuantity = quantity as number;
+  const portfolioId = `${uid}_utama`; const portfolio = db.collection("portfolios").doc(portfolioId); const wallet = db.collection("wallets").doc(uid); const holding = portfolio.collection("holdings").doc(asset.id); const transaction = db.collection("transactions").doc();
+  await db.runTransaction(async (tx) => { const [priceSnap, walletSnap, holdingSnap] = await Promise.all([tx.get(db.collection("marketPrices").doc(asset.id)), tx.get(wallet), tx.get(holding)]); const price = Number(priceSnap.data()?.price); if (!Number.isFinite(price) || price <= 0) throw new HttpsError("failed-precondition", "Harga aset belum tersedia."); const total = price * validQuantity; const balance = Number(walletSnap.data()?.balance ?? 0); const oldQuantity = Number(holdingSnap.data()?.quantity ?? 0); if (side === "buy") { if (balance < total) throw new HttpsError("failed-precondition", "Saldo tidak mencukupi."); const averageBuy = ((Number(holdingSnap.data()?.averageBuy ?? 0) * oldQuantity) + total) / (oldQuantity + validQuantity); tx.set(wallet, { uid, balance: balance - total, updatedAt: FieldValue.serverTimestamp() }, { merge: true }); tx.set(holding, { assetId: asset.id, symbol: asset.symbol, name: asset.name, quantity: oldQuantity + validQuantity, averageBuy, currentPrice: price, updatedAt: FieldValue.serverTimestamp() }, { merge: true }); } else { if (oldQuantity < validQuantity) throw new HttpsError("failed-precondition", "Jumlah aset tidak mencukupi."); tx.set(wallet, { uid, balance: balance + total, updatedAt: FieldValue.serverTimestamp() }, { merge: true }); if (oldQuantity === validQuantity) tx.delete(holding); else tx.update(holding, { quantity: oldQuantity - validQuantity, currentPrice: price, updatedAt: FieldValue.serverTimestamp() }); } tx.set(transaction, { uid, assetId: asset.id, symbol: asset.symbol, name: asset.name, side, quantity: validQuantity, price, total, status: "completed", createdAt: FieldValue.serverTimestamp() }); });
+  return { success: true };
 });
+
+export const toggleWatchlist = onCall({ region: REGION }, async (request) => { const uid = mustAuth(request); const assetId = request.data?.assetId; if (typeof assetId !== "string" || !simulationAssets.some((item) => item.id === assetId)) fail("Aset tidak valid."); const ref = db.collection("watchlists").doc(uid); const result = await db.runTransaction(async (tx) => { const current = (await tx.get(ref)).data()?.assetIds as string[] | undefined; const assetIds = (current ?? []).includes(assetId) ? (current ?? []).filter((id) => id !== assetId) : [...(current ?? []), assetId]; tx.set(ref, { uid, assetIds, updatedAt: FieldValue.serverTimestamp() }, { merge: true }); return assetIds; }); return { assetIds: result }; });
+export const updateProfile = onCall({ region: REGION }, async (request) => { const uid = mustAuth(request); const { namaPanggilan, nomorHP } = request.data as { namaPanggilan?: unknown; nomorHP?: unknown }; if (!validName(namaPanggilan) || !validPhone(nomorHP)) throw new HttpsError("invalid-argument", "Profil tidak valid."); const name = namaPanggilan.trim(); await db.collection("users").doc(uid).update({ namaPanggilan: name, nomorHP, updatedAt: FieldValue.serverTimestamp() }); await adminAuth.updateUser(uid, { displayName: name }); return { success: true }; });
+export const updateSettings = onCall({ region: REGION }, async (request) => { const uid = mustAuth(request); const keys = ["marketAlerts", "aiInsights", "systemNotifications", "emailDigest", "analytics", "personalizedRecommendations", "portfolioSharing"]; const data = request.data as Record<string, unknown>; if (!keys.every((key) => typeof data[key] === "boolean")) fail("Pengaturan tidak valid."); await db.collection("settings").doc(uid).set(Object.fromEntries(keys.map((key) => [key, data[key]])), { merge: true }); return { success: true }; });
+export const deleteAccount = onCall({ region: REGION }, async (request) => { const uid = mustAuth(request); const portfolio = db.collection("portfolios").doc(`${uid}_utama`); await Promise.all([db.recursiveDelete(portfolio), db.collection("users").doc(uid).delete(), db.collection("wallets").doc(uid).delete(), db.collection("watchlists").doc(uid).delete(), db.collection("settings").doc(uid).delete()]); const transactions = await db.collection("transactions").where("uid", "==", uid).get(); const batch = db.batch(); transactions.docs.forEach((row) => batch.delete(row.ref)); await batch.commit(); await adminAuth.deleteUser(uid); return { success: true }; });

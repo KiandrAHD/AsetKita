@@ -1,0 +1,17 @@
+import type { Asset } from "@/types/dashboard";
+
+const usd = (value: number) => Math.round(value * 16000);
+type RawCategory = "stock" | "crypto" | "metal";
+const make = (symbol: string, name: string, category: RawCategory, ath: number, currency: "IDR" | "USD" = "IDR"): Asset => ({
+  id: symbol.toLowerCase().replace(".", "-"), symbol, name, category: category === "stock" ? "saham" : category === "crypto" ? "kripto" : "logam", ath, currency, basePrice: currency === "USD" ? usd(ath) : ath, unit: category === "metal" ? "oz" : category === "stock" ? "unit" : "token", color: "#10b981",
+});
+
+export const ASSETS: Asset[] = [
+  make("AAPL", "Apple Inc.", "stock", 310, "USD"), make("MSFT", "Microsoft Corporation", "stock", 500, "USD"), make("NVDA", "NVIDIA Corporation", "stock", 135, "USD"), make("GOOGL", "Alphabet Inc.", "stock", 195, "USD"), make("AMZN", "Amazon.com Inc.", "stock", 200, "USD"), make("META", "Meta Platforms Inc.", "stock", 530, "USD"), make("TSLA", "Tesla Inc.", "stock", 230, "USD"), make("BRK.B", "Berkshire Hathaway Inc.", "stock", 450, "USD"), make("LLY", "Eli Lilly and Company", "stock", 850, "USD"), make("AVGO", "Broadcom Inc.", "stock", 175, "USD"), make("JPM", "JPMorgan Chase & Co.", "stock", 220, "USD"), make("WMT", "Walmart Inc.", "stock", 75, "USD"), make("V", "Visa Inc.", "stock", 275, "USD"), make("XOM", "Exxon Mobil Corp.", "stock", 120, "USD"), make("DIS", "The Walt Disney Company", "stock", 100, "USD"),
+  make("BBCA", "Bank Central Asia", "stock", 6400), make("BBRI", "Bank Rakyat Indonesia", "stock", 3050), make("BMRI", "Bank Mandiri", "stock", 4250), make("TLKM", "Telkom Indonesia", "stock", 2700), make("ASII", "Astra International", "stock", 5150), make("BBNI", "Bank Negara Indonesia", "stock", 3650), make("BREN", "Barito Renewables Energy", "stock", 3400), make("BYAN", "Bayan Resources", "stock", 12100), make("GOTO", "GoTo Gojek Tokopedia", "stock", 55), make("ICBP", "Indofood CBP", "stock", 7500), make("ANTM", "Aneka Tambang", "stock", 3100), make("KLBF", "Kalbe Farma", "stock", 810), make("UNVR", "Unilever Indonesia", "stock", 1850), make("UNTR", "United Tractors", "stock", 24000), make("PGAS", "Perusahaan Gas Negara", "stock", 1550),
+  make("BTC", "Bitcoin", "crypto", 108900, "USD"), make("ETH", "Ethereum", "crypto", 4891, "USD"), make("BNB", "BNB", "crypto", 720, "USD"), make("SOL", "Solana", "crypto", 260, "USD"), make("XRP", "XRP (Ripple)", "crypto", 3.84, "USD"), make("ADA", "Cardano", "crypto", 3.10, "USD"), make("DOGE", "Dogecoin", "crypto", .73, "USD"), make("DOT", "Polkadot", "crypto", 55, "USD"), make("LINK", "Chainlink", "crypto", 52.88, "USD"), make("AVAX", "Avalanche", "crypto", 146.22, "USD"), make("SHIB", "Shiba Inu", "crypto", .00008845, "USD"), make("TRX", "TRON", "crypto", .43, "USD"), make("LTC", "Litecoin", "crypto", 412.96, "USD"), make("BCH", "Bitcoin Cash", "crypto", 4355, "USD"), make("MATIC", "Polygon", "crypto", 2.92, "USD"),
+  make("XRH", "Rhodium", "metal", 29800, "USD"), make("XIR", "Iridium", "metal", 9080, "USD"), make("XAU", "Gold", "metal", 5608, "USD"), make("XPD", "Palladium", "metal", 3440, "USD"), make("XPT", "Platinum", "metal", 2290, "USD"), make("XOS", "Osmium", "metal", 1300, "USD"), make("XRU", "Ruthenium", "metal", 870, "USD"), make("RE", "Rhenium", "metal", 12000, "USD"), make("XAG", "Silver", "metal", 49.51, "USD"), make("IN", "Indium", "metal", 1050, "USD"),
+];
+
+export const assetBySymbol = (symbol: string) => ASSETS.find((asset) => asset.symbol === symbol);
+export const assets = ASSETS;

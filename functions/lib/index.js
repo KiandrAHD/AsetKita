@@ -1,12 +1,13 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getLatestNews = exports.getMarketSnapshot = exports.createDemoToken = exports.completePasswordReset = exports.verifyPasswordResetOtp = exports.completeRegistration = exports.requestEmailOtp = void 0;
+exports.deleteAccount = exports.updateSettings = exports.updateProfile = exports.toggleWatchlist = exports.executeTrade = exports.updateMarketSimulation = exports.getLatestNews = exports.getMarketSnapshot = exports.createDemoToken = exports.completePasswordReset = exports.verifyPasswordResetOtp = exports.completeRegistration = exports.requestEmailOtp = void 0;
 const node_crypto_1 = require("node:crypto");
 const app_1 = require("firebase-admin/app");
 const auth_1 = require("firebase-admin/auth");
 const firestore_1 = require("firebase-admin/firestore");
 const https_1 = require("firebase-functions/v2/https");
 const params_1 = require("firebase-functions/params");
+const scheduler_1 = require("firebase-functions/v2/scheduler");
 const resend_1 = require("resend");
 (0, app_1.initializeApp)();
 const db = (0, firestore_1.getFirestore)();
@@ -173,3 +174,64 @@ exports.getLatestNews = (0, https_1.onCall)({ region: REGION, secrets: [newsData
         return { news: [] };
     }
 });
+const sim = (category, rows) => rows.map(([symbol, name, ath]) => ({ id: symbol.toLowerCase().replace(".", "-"), symbol, name, price: Math.round(ath * .8 * (category === "stock" && ["bbca", "bbri", "bmri", "tlkm", "asii", "bbni", "bren", "byan", "goto", "icbp", "antm", "klbf", "unvr", "untr", "pgas"].includes(symbol.toLowerCase()) ? 1 : 16000)), volatility: category === "crypto" ? .05 : category === "stock" ? .02 : .01 }));
+const simulationAssets = [
+    ...sim("crypto", [["BTC", "Bitcoin", 108900], ["ETH", "Ethereum", 4891], ["BNB", "BNB", 720], ["SOL", "Solana", 260], ["XRP", "XRP", 3.84], ["ADA", "Cardano", 3.1], ["DOGE", "Dogecoin", .73], ["DOT", "Polkadot", 55], ["LINK", "Chainlink", 52.88], ["AVAX", "Avalanche", 146.22], ["SHIB", "Shiba Inu", .00008845], ["TRX", "TRON", .43], ["LTC", "Litecoin", 412.96], ["BCH", "Bitcoin Cash", 4355], ["POL", "Polygon", 2.92]]),
+    ...sim("stock", [["AAPL", "Apple Inc.", 310], ["MSFT", "Microsoft Corporation", 500], ["NVDA", "NVIDIA Corporation", 135], ["GOOGL", "Alphabet Inc.", 195], ["AMZN", "Amazon.com Inc.", 200], ["META", "Meta Platforms Inc.", 530], ["TSLA", "Tesla Inc.", 230], ["BRK.B", "Berkshire Hathaway Inc.", 450], ["LLY", "Eli Lilly", 850], ["AVGO", "Broadcom", 175], ["JPM", "JPMorgan", 220], ["WMT", "Walmart", 75], ["V", "Visa", 275], ["XOM", "Exxon Mobil", 120], ["DIS", "Disney", 100], ["BBCA", "Bank Central Asia", 6400], ["BBRI", "Bank Rakyat Indonesia", 3050], ["BMRI", "Bank Mandiri", 4250], ["TLKM", "Telkom Indonesia", 2700], ["ASII", "Astra International", 5150], ["BBNI", "Bank Negara Indonesia", 3650], ["BREN", "Barito Renewables", 3400], ["BYAN", "Bayan Resources", 12100], ["GOTO", "GoTo", 55], ["ICBP", "Indofood CBP", 7500], ["ANTM", "Aneka Tambang", 3100], ["KLBF", "Kalbe Farma", 810], ["UNVR", "Unilever Indonesia", 1850], ["UNTR", "United Tractors", 24000], ["PGAS", "Perusahaan Gas Negara", 1550]]),
+    ...sim("metal", [["XRH", "Rhodium", 29800], ["XIR", "Iridium", 9080], ["XAU", "Gold", 5608], ["XPD", "Palladium", 3440], ["XPT", "Platinum", 2290], ["XOS", "Osmium", 1300], ["XRU", "Ruthenium", 870], ["RE", "Rhenium", 370], ["XAG", "Silver", 49.51], ["IN", "Indium", 32.6]])
+];
+const mustAuth = (request) => { if (!request.auth || request.auth.token.demo === true)
+    throw new https_1.HttpsError("unauthenticated", "Silakan masuk dengan akun anggota."); return request.auth.uid; };
+exports.updateMarketSimulation = (0, scheduler_1.onSchedule)({ region: REGION, schedule: "every 4 hours", timeZone: "Asia/Jakarta" }, async () => {
+    const batch = db.batch();
+    const now = firestore_1.Timestamp.now();
+    for (const asset of simulationAssets) {
+        const ref = db.collection("marketPrices").doc(asset.id);
+        const old = await ref.get();
+        const previous = Number(old.data()?.price ?? asset.price);
+        const next = Math.max(1, Math.round(previous * (1 + (Math.random() * 2 - 1) * asset.volatility) * 100) / 100);
+        batch.set(ref, { ...asset, price: next, previousPrice: previous, changePercent: Number((((next - previous) / previous) * 100).toFixed(2)), updatedAt: now }, { merge: true });
+        batch.set(ref.collection("history").doc(now.toMillis().toString()), { price: next, at: now, label: now.toDate().toLocaleDateString("id-ID") });
+    }
+    await batch.commit();
+});
+exports.executeTrade = (0, https_1.onCall)({ region: REGION }, async (request) => {
+    const uid = mustAuth(request);
+    const { assetId, side, quantity } = request.data;
+    if (typeof assetId !== "string" || (side !== "buy" && side !== "sell") || typeof quantity !== "number" || !Number.isFinite(quantity) || quantity <= 0)
+        fail("Data transaksi tidak valid.");
+    const asset = simulationAssets.find((item) => item.id === assetId);
+    if (!asset)
+        throw new https_1.HttpsError("invalid-argument", "Aset tidak ditemukan.");
+    const validQuantity = quantity;
+    const portfolioId = `${uid}_utama`;
+    const portfolio = db.collection("portfolios").doc(portfolioId);
+    const wallet = db.collection("wallets").doc(uid);
+    const holding = portfolio.collection("holdings").doc(asset.id);
+    const transaction = db.collection("transactions").doc();
+    await db.runTransaction(async (tx) => { const [priceSnap, walletSnap, holdingSnap] = await Promise.all([tx.get(db.collection("marketPrices").doc(asset.id)), tx.get(wallet), tx.get(holding)]); const price = Number(priceSnap.data()?.price); if (!Number.isFinite(price) || price <= 0)
+        throw new https_1.HttpsError("failed-precondition", "Harga aset belum tersedia."); const total = price * validQuantity; const balance = Number(walletSnap.data()?.balance ?? 0); const oldQuantity = Number(holdingSnap.data()?.quantity ?? 0); if (side === "buy") {
+        if (balance < total)
+            throw new https_1.HttpsError("failed-precondition", "Saldo tidak mencukupi.");
+        const averageBuy = ((Number(holdingSnap.data()?.averageBuy ?? 0) * oldQuantity) + total) / (oldQuantity + validQuantity);
+        tx.set(wallet, { uid, balance: balance - total, updatedAt: firestore_1.FieldValue.serverTimestamp() }, { merge: true });
+        tx.set(holding, { assetId: asset.id, symbol: asset.symbol, name: asset.name, quantity: oldQuantity + validQuantity, averageBuy, currentPrice: price, updatedAt: firestore_1.FieldValue.serverTimestamp() }, { merge: true });
+    }
+    else {
+        if (oldQuantity < validQuantity)
+            throw new https_1.HttpsError("failed-precondition", "Jumlah aset tidak mencukupi.");
+        tx.set(wallet, { uid, balance: balance + total, updatedAt: firestore_1.FieldValue.serverTimestamp() }, { merge: true });
+        if (oldQuantity === validQuantity)
+            tx.delete(holding);
+        else
+            tx.update(holding, { quantity: oldQuantity - validQuantity, currentPrice: price, updatedAt: firestore_1.FieldValue.serverTimestamp() });
+    } tx.set(transaction, { uid, assetId: asset.id, symbol: asset.symbol, name: asset.name, side, quantity: validQuantity, price, total, status: "completed", createdAt: firestore_1.FieldValue.serverTimestamp() }); });
+    return { success: true };
+});
+exports.toggleWatchlist = (0, https_1.onCall)({ region: REGION }, async (request) => { const uid = mustAuth(request); const assetId = request.data?.assetId; if (typeof assetId !== "string" || !simulationAssets.some((item) => item.id === assetId))
+    fail("Aset tidak valid."); const ref = db.collection("watchlists").doc(uid); const result = await db.runTransaction(async (tx) => { const current = (await tx.get(ref)).data()?.assetIds; const assetIds = (current ?? []).includes(assetId) ? (current ?? []).filter((id) => id !== assetId) : [...(current ?? []), assetId]; tx.set(ref, { uid, assetIds, updatedAt: firestore_1.FieldValue.serverTimestamp() }, { merge: true }); return assetIds; }); return { assetIds: result }; });
+exports.updateProfile = (0, https_1.onCall)({ region: REGION }, async (request) => { const uid = mustAuth(request); const { namaPanggilan, nomorHP } = request.data; if (!validName(namaPanggilan) || !validPhone(nomorHP))
+    throw new https_1.HttpsError("invalid-argument", "Profil tidak valid."); const name = namaPanggilan.trim(); await db.collection("users").doc(uid).update({ namaPanggilan: name, nomorHP, updatedAt: firestore_1.FieldValue.serverTimestamp() }); await adminAuth.updateUser(uid, { displayName: name }); return { success: true }; });
+exports.updateSettings = (0, https_1.onCall)({ region: REGION }, async (request) => { const uid = mustAuth(request); const keys = ["marketAlerts", "aiInsights", "systemNotifications", "emailDigest", "analytics", "personalizedRecommendations", "portfolioSharing"]; const data = request.data; if (!keys.every((key) => typeof data[key] === "boolean"))
+    fail("Pengaturan tidak valid."); await db.collection("settings").doc(uid).set(Object.fromEntries(keys.map((key) => [key, data[key]])), { merge: true }); return { success: true }; });
+exports.deleteAccount = (0, https_1.onCall)({ region: REGION }, async (request) => { const uid = mustAuth(request); await Promise.all([db.collection("users").doc(uid).delete(), db.collection("wallets").doc(uid).delete(), db.collection("watchlists").doc(uid).delete(), db.collection("settings").doc(uid).delete()]); return { success: true }; });

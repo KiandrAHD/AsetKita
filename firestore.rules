@@ -22,8 +22,15 @@ service cloud.firestore {
     }
     match /transactions/{transactionId} { allow read: if request.auth != null && request.auth.token.demo != true && resource.data.uid == request.auth.uid; allow write: if false; }
     match /watchlists/{watchlistId} { allow read: if request.auth != null && request.auth.token.demo != true && resource.data.uid == request.auth.uid; allow write: if false; }
+    match /settings/{userId} { allow read: if request.auth != null && request.auth.uid == userId && request.auth.token.demo != true; allow write: if false; }
+    match /settings/{userId} { allow read: if request.auth != null && request.auth.token.demo != true && userId == request.auth.uid; allow write: if false; }
+    match /marketPrices/{assetId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+      match /history/{historyId} { allow read: if request.auth != null; allow write: if false; }
+    }
     match /notifications/{notificationId} { allow read: if request.auth != null && request.auth.token.demo != true && resource.data.uid == request.auth.uid; allow write: if false; }
-    match /marketCache/{document=**} { allow read, write: if false; }
+    match /marketPrices/{assetId} { allow read: if request.auth != null; allow write: if false; match /history/{pointId} { allow read: if request.auth != null; allow write: if false; } }
     match /emailOtps/{document=**} { allow read, write: if false; }
     match /passwordResetTickets/{document=**} { allow read, write: if false; }
     match /contactMessages/{messageId} {

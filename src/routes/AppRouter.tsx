@@ -19,6 +19,9 @@ import Notification from "@/pages/Dashboard/notification";
 import RequireAuth from "@/components/auth/RequireAuth";
 import DashboardLayout from "@/layouts/DashboardLayout";
 import PlaceholderPage from "@/pages/Dashboard/PlaceholderPage";
+import Watchlist from "@/pages/Dashboard/watchlist";
+import Transactions from "@/pages/Dashboard/transactions";
+import AssetDetail from "@/pages/Dashboard/assetDetail";
 
 const AI = () => <PlaceholderPage title="AI & Belajar" />;
 
@@ -45,8 +48,9 @@ export default function AppRouter() {
                     <Route path="/profile" element={<Profile />} />
                     <Route path="/settings" element={<Settings />} />
                     <Route path="/notification" element={<Notification />} />
-                    <Route path="/watchlist" element={<PlaceholderPage title="Watchlist" />} />
-                    <Route path="/history" element={<PlaceholderPage title="Riwayat" />} />
+                    <Route path="/watchlist" element={<Watchlist />} />
+                    <Route path="/transactions" element={<Transactions />} />
+                    <Route path="/market/:assetId" element={<AssetDetail />} />
                 </Route>
 
             </Routes>
