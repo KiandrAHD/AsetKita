@@ -20,6 +20,7 @@ import RequireAuth from "@/components/auth/RequireAuth";
 import DashboardLayout from "@/layouts/DashboardLayout";
 import PlaceholderPage from "@/pages/Dashboard/PlaceholderPage";
 import Watchlist from "@/pages/Dashboard/watchlist";
+import AddFavorite from "@/pages/Dashboard/addFavorite";
 import Transactions from "@/pages/Dashboard/transactions";
 import AssetDetail from "@/pages/Dashboard/assetDetail";
 
@@ -49,6 +50,7 @@ export default function AppRouter() {
                     <Route path="/settings" element={<Settings />} />
                     <Route path="/notification" element={<Notification />} />
                     <Route path="/watchlist" element={<Watchlist />} />
+                    <Route path="/watchlist/add" element={<AddFavorite />} />
                     <Route path="/transactions" element={<Transactions />} />
                     <Route path="/market/:assetId" element={<AssetDetail />} />
                 </Route>
