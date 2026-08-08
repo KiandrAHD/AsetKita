@@ -30,7 +30,6 @@ export default function AppRouter() {
     return (
         <BrowserRouter>
             <Routes>
-
                 <Route path="/" element={<Landing />} />
                 <Route path="/about" element={<About />} />
                 <Route path="/security" element={<Security />} />
@@ -41,7 +40,13 @@ export default function AppRouter() {
                 <Route path="/register" element={<Register />} />
                 <Route path="/demo" element={<Demo />} />
 
-                <Route element={<RequireAuth><DashboardLayout /></RequireAuth>}>
+                <Route
+                    element={
+                        <RequireAuth>
+                            <DashboardLayout />
+                        </RequireAuth>
+                    }
+                >
                     <Route path="/dashboard" element={<Dashboard />} />
                     <Route path="/portfolio" element={<Portfolio />} />
                     <Route path="/market" element={<Market />} />
@@ -54,7 +59,6 @@ export default function AppRouter() {
                     <Route path="/transactions" element={<Transactions />} />
                     <Route path="/market/:assetId" element={<AssetDetail />} />
                 </Route>
-
             </Routes>
         </BrowserRouter>
     );
