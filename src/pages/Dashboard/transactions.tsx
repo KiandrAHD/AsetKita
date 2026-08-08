@@ -5,4 +5,115 @@ import { auth } from "@/lib/firebase";
 import { getTransactions } from "@/services/marketService";
 import type { Transaction } from "@/types/dashboard";
 import { formatRupiah } from "@/utils/formatters";
-export default function Transactions() { const [items,setItems]=useState<Transaction[]>([]); const [filter,setFilter]=useState<"all"|"buy"|"sell">("all"); const [search,setSearch]=useState(""); useEffect(()=>{void getTransactions(auth.currentUser?.uid).then(setItems);},[]); const rows=useMemo(()=>items.filter((item)=>(filter==="all"||item.side===filter)&&`${item.name} ${item.symbol}`.toLowerCase().includes(search.toLowerCase())),[items,filter,search]); const exportCsv=()=>{const text=["ID,Aset,Tipe,Jumlah,Harga,Total,Tanggal",...rows.map((r)=>[r.id,r.symbol,r.side,r.quantity,r.price,r.total,r.createdAt.toISOString()].join(","))].join("\n");const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type:"text/csv"}));a.download="transaksi-asetkita.csv";a.click();URL.revokeObjectURL(a.href);}; return <PageFrame title="Transaksi" description={`${items.length} transaksi tercatat`}><div className="mb-4 flex flex-wrap gap-2"><input value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="Cari transaksi..." className="flex-1 rounded-xl border border-white/10 bg-[#101b2a] px-4 py-2 outline-none"/>{(["all","buy","sell"] as const).map((v)=><button key={v} onClick={()=>setFilter(v)} className={`rounded-xl px-4 py-2 text-sm capitalize ${filter===v?"bg-cyan-400 text-slate-950":"bg-white/5"}`}>{v==="all"?"Semua":v==="buy"?"Beli":"Jual"}</button>)}<button onClick={exportCsv} className="rounded-xl border border-cyan-300/30 px-4 py-2 text-sm text-cyan-200">Ekspor CSV</button></div><div className="overflow-x-auto rounded-2xl border border-white/10 bg-[#101b2a]">{rows.length?<table className="w-full min-w-[620px] text-left text-sm"><thead className="text-slate-400"><tr><th className="p-4">Aset</th><th>Tipe</th><th>Jumlah</th><th>Total</th><th>Tanggal</th><th>Status</th></tr></thead><tbody>{rows.map((item)=><tr key={item.id} className="border-t border-white/5"><td className="p-4"><b>{item.name}</b><small className="ml-2 text-slate-400">{item.symbol}</small></td><td className={item.side==="buy"?"text-emerald-300":"text-rose-300"}>{item.side==="buy"?"Beli":"Jual"}</td><td>{item.quantity}</td><td>{formatRupiah(item.total)}</td><td>{item.createdAt.toLocaleDateString("id-ID")}</td><td className="text-emerald-300">Selesai</td></tr>)}</tbody></table>:<EmptyState title="Belum ada transaksi" description="Riwayat beli dan jual aset Anda akan tampil di sini."/>}</div></PageFrame>; }
+export default function Transactions() {
+    const [items, setItems] = useState<Transaction[]>([]);
+    const [filter, setFilter] = useState<"all" | "buy" | "sell">("all");
+    const [search, setSearch] = useState("");
+    useEffect(() => {
+        void getTransactions(auth.currentUser?.uid).then(setItems);
+    }, []);
+    const rows = useMemo(
+        () =>
+            items.filter(
+                (item) =>
+                    (filter === "all" || item.side === filter) &&
+                    `${item.name} ${item.symbol}`
+                        .toLowerCase()
+                        .includes(search.toLowerCase()),
+            ),
+        [items, filter, search],
+    );
+    const exportCsv = () => {
+        const text = [
+            "ID,Aset,Tipe,Jumlah,Harga,Total,Tanggal",
+            ...rows.map((r) =>
+                [
+                    r.id,
+                    r.symbol,
+                    r.side,
+                    r.quantity,
+                    r.price,
+                    r.total,
+                    r.createdAt.toISOString(),
+                ].join(","),
+            ),
+        ].join("\n");
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(new Blob([text], { type: "text/csv" }));
+        a.download = "transaksi-asetkita.csv";
+        a.click();
+        URL.revokeObjectURL(a.href);
+    };
+    return (
+        <PageFrame
+            title="Transaksi"
+            description={`${items.length} transaksi tercatat`}
+        >
+            <div className="mb-4 flex flex-wrap gap-2">
+                <input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Cari transaksi..."
+                    className="flex-1 rounded-xl border border-white/10 bg-[#101b2a] px-4 py-2 outline-none"
+                />
+                {(["all", "buy", "sell"] as const).map((v) => (
+                    <button
+                        key={v}
+                        onClick={() => setFilter(v)}
+                        className={`rounded-xl px-4 py-2 text-sm capitalize ${filter === v ? "bg-cyan-400 text-slate-950" : "bg-white/5"}`}
+                    >
+                        {v === "all" ? "Semua" : v === "buy" ? "Beli" : "Jual"}
+                    </button>
+                ))}
+                <button
+                    onClick={exportCsv}
+                    className="rounded-xl border border-cyan-300/30 px-4 py-2 text-sm text-cyan-200"
+                >
+                    Ekspor CSV
+                </button>
+            </div>
+            <div className="overflow-x-auto rounded-2xl border border-white/10 bg-[#101b2a]">
+                {rows.length ? (
+                    <table className="w-full min-w-[620px] text-left text-sm">
+                        <thead className="text-slate-400">
+                            <tr>
+                                <th className="p-4">Aset</th>
+                                <th>Tipe</th>
+                                <th>Jumlah</th>
+                                <th>Total</th>
+                                <th>Tanggal</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {rows.map((item) => (
+                                <tr key={item.id} className="border-t border-white/5">
+                                    <td className="p-4">
+                                        <b>{item.name}</b>
+                                        <small className="ml-2 text-slate-400">{item.symbol}</small>
+                                    </td>
+                                    <td
+                                        className={
+                                            item.side === "buy" ? "text-emerald-300" : "text-rose-300"
+                                        }
+                                    >
+                                        {item.side === "buy" ? "Beli" : "Jual"}
+                                    </td>
+                                    <td>{item.quantity}</td>
+                                    <td>{formatRupiah(item.total)}</td>
+                                    <td>{item.createdAt.toLocaleDateString("id-ID")}</td>
+                                    <td className="text-emerald-300">Selesai</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                ) : (
+                    <EmptyState
+                        title="Belum ada transaksi"
+                        description="Riwayat beli dan jual aset Anda akan tampil di sini."
+                    />
+                )}
+            </div>
+        </PageFrame>
+    );
+}

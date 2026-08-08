@@ -1,8 +1,115 @@
 import { useEffect, useState } from "react";
-import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from "firebase/auth";
+import {
+    EmailAuthProvider,
+    reauthenticateWithCredential,
+    updatePassword,
+} from "firebase/auth";
 import PageFrame from "@/components/Dashboard/PageFrame";
 import { auth } from "@/lib/firebase";
-import { getSettings, removeAccount, saveSettings } from "@/services/accountService";
+import {
+    getSettings,
+    removeAccount,
+    saveSettings,
+} from "@/services/accountService";
 import { defaultSettings } from "@/services/marketService";
 import type { UserSettings } from "@/types/dashboard";
-export default function Settings() { const [settings,setSettings]=useState<UserSettings>(defaultSettings);const [message,setMessage]=useState("");const user=auth.currentUser;useEffect(()=>{if(user)void getSettings(user.uid).then(setSettings);},[user]);const flip=(key:keyof UserSettings)=>{const next={...settings,[key]:!settings[key]};setSettings(next);if(user)void saveSettings(next).catch(()=>setMessage("Pengaturan gagal disimpan."));};const change=async()=>{const password=prompt("Masukkan kata sandi saat ini:");const next=prompt("Masukkan kata sandi baru (minimal 8 karakter):");if(!user?.email||!password||!next)return;try{await reauthenticateWithCredential(user,EmailAuthProvider.credential(user.email,password));await updatePassword(user,next);setMessage("Kata sandi berhasil diubah.");}catch{setMessage("Gagal mengubah kata sandi.");}};const deleteMe=async()=>{if(!confirm("Hapus akun permanen? Tindakan ini tidak dapat dibatalkan."))return;try{await removeAccount();window.location.assign("/");}catch{setMessage("Gagal menghapus akun. Masuk ulang lalu coba kembali.");}};return <PageFrame title="Pengaturan" description="Privasi, keamanan, dan preferensi notifikasi."><div className="mx-auto max-w-2xl space-y-5"><section className="rounded-2xl border border-white/10 bg-[#101b2a] p-5"><h2 className="font-semibold">Keamanan</h2><button onClick={()=>void change()} disabled={!user} className="mt-4 rounded-xl border border-white/10 px-4 py-2 text-sm">Ubah kata sandi</button></section><section className="rounded-2xl border border-white/10 bg-[#101b2a] p-5"><h2 className="font-semibold">Notifikasi & Privasi</h2><div className="mt-3 divide-y divide-white/10">{([["marketAlerts","Peringatan market"],["aiInsights","Insight AI (nonaktif)"],["systemNotifications","Notifikasi sistem"],["emailDigest","Ringkasan email"],["analytics","Analitik & laporan error"],["personalizedRecommendations","Rekomendasi personal"],["portfolioSharing","Portofolio publik"]] as Array<[keyof UserSettings,string]>).map(([key,label])=><label key={key} className="flex items-center justify-between py-4 text-sm"><span>{label}</span><input type="checkbox" checked={settings[key]} onChange={()=>flip(key)} disabled={!user}/></label>)}</div></section><section className="rounded-2xl border border-rose-400/20 bg-rose-400/5 p-5"><h2 className="font-semibold text-rose-200">Zona berbahaya</h2><button onClick={()=>void deleteMe()} disabled={!user} className="mt-3 rounded-xl bg-rose-400 px-4 py-2 text-sm font-bold text-slate-950">Hapus akun</button></section>{message&&<p className="text-sm text-cyan-200">{message}</p>}</div></PageFrame>; }
+export default function Settings() {
+    const [settings, setSettings] = useState<UserSettings>(defaultSettings);
+    const [message, setMessage] = useState("");
+    const user = auth.currentUser;
+    useEffect(() => {
+        if (user) void getSettings(user.uid).then(setSettings);
+    }, [user]);
+    const flip = (key: keyof UserSettings) => {
+        const next = { ...settings, [key]: !settings[key] };
+        setSettings(next);
+        if (user)
+            void saveSettings(next).catch(() =>
+                setMessage("Pengaturan gagal disimpan."),
+            );
+    };
+    const change = async () => {
+        const password = prompt("Masukkan kata sandi saat ini:");
+        const next = prompt("Masukkan kata sandi baru (minimal 8 karakter):");
+        if (!user?.email || !password || !next) return;
+        try {
+            await reauthenticateWithCredential(
+                user,
+                EmailAuthProvider.credential(user.email, password),
+            );
+            await updatePassword(user, next);
+            setMessage("Kata sandi berhasil diubah.");
+        } catch {
+            setMessage("Gagal mengubah kata sandi.");
+        }
+    };
+    const deleteMe = async () => {
+        if (!confirm("Hapus akun permanen? Tindakan ini tidak dapat dibatalkan."))
+            return;
+        try {
+            await removeAccount();
+            window.location.assign("/");
+        } catch {
+            setMessage("Gagal menghapus akun. Masuk ulang lalu coba kembali.");
+        }
+    };
+    return (
+        <PageFrame
+            title="Pengaturan"
+            description="Privasi, keamanan, dan preferensi notifikasi."
+        >
+            <div className="mx-auto max-w-2xl space-y-5">
+                <section className="rounded-2xl border border-white/10 bg-[#101b2a] p-5">
+                    <h2 className="font-semibold">Keamanan</h2>
+                    <button
+                        onClick={() => void change()}
+                        disabled={!user}
+                        className="mt-4 rounded-xl border border-white/10 px-4 py-2 text-sm"
+                    >
+                        Ubah kata sandi
+                    </button>
+                </section>
+                <section className="rounded-2xl border border-white/10 bg-[#101b2a] p-5">
+                    <h2 className="font-semibold">Notifikasi & Privasi</h2>
+                    <div className="mt-3 divide-y divide-white/10">
+                        {(
+                            [
+                                ["marketAlerts", "Peringatan market"],
+                                ["aiInsights", "Insight AI (nonaktif)"],
+                                ["systemNotifications", "Notifikasi sistem"],
+                                ["emailDigest", "Ringkasan email"],
+                                ["analytics", "Analitik & laporan error"],
+                                ["personalizedRecommendations", "Rekomendasi personal"],
+                                ["portfolioSharing", "Portofolio publik"],
+                            ] as Array<[keyof UserSettings, string]>
+                        ).map(([key, label]) => (
+                            <label
+                                key={key}
+                                className="flex items-center justify-between py-4 text-sm"
+                            >
+                                <span>{label}</span>
+                                <input
+                                    type="checkbox"
+                                    checked={settings[key]}
+                                    onChange={() => flip(key)}
+                                    disabled={!user}
+                                />
+                            </label>
+                        ))}
+                    </div>
+                </section>
+                <section className="rounded-2xl border border-rose-400/20 bg-rose-400/5 p-5">
+                    <h2 className="font-semibold text-rose-200">Zona berbahaya</h2>
+                    <button
+                        onClick={() => void deleteMe()}
+                        disabled={!user}
+                        className="mt-3 rounded-xl bg-rose-400 px-4 py-2 text-sm font-bold text-slate-950"
+                    >
+                        Hapus akun
+                    </button>
+                </section>
+                {message && <p className="text-sm text-cyan-200">{message}</p>}
+            </div>
+        </PageFrame>
+    );
+}
