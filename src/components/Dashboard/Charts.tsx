@@ -1,8 +1,121 @@
-import { PieChart, Pie, Cell, ResponsiveContainer, AreaChart, Area, Tooltip, XAxis, YAxis } from "recharts";
+import {
+    PieChart,
+    Pie,
+    Cell,
+    ResponsiveContainer,
+    AreaChart,
+    Area,
+    Tooltip,
+    XAxis,
+    YAxis,
+} from "recharts";
 import DashboardCard from "./DashboardCard";
 import { EmptyState } from "./State";
 import { BarChart3, PieChart as PieIcon } from "lucide-react";
 import type { Allocation, ChartPoint } from "@/types/dashboard";
 import { formatRupiah } from "@/utils/formatters";
-export function PortfolioChart({ data }: { data: ChartPoint[] }) { return <DashboardCard className="p-5 sm:p-6"><div><h2 className="font-semibold text-white">Performa Portofolio</h2><p className="mt-1 text-sm text-slate-400">Perkembangan nilai investasi</p></div>{data.length ? <div className="mt-5 h-72"><ResponsiveContainer width="100%" height="100%"><AreaChart data={data}><defs><linearGradient id="portfolioFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#22d3ee" stopOpacity={.32} /><stop offset="100%" stopColor="#22d3ee" stopOpacity={0} /></linearGradient></defs><XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: "#94a3b8", fontSize: 12 }} /><YAxis hide /><Tooltip formatter={(value) => formatRupiah(Number(value))} contentStyle={{ background: "#0b1220", border: "1px solid #334155", borderRadius: 12 }} /><Area dataKey="value" type="monotone" stroke="#22d3ee" strokeWidth={3} fill="url(#portfolioFill)" /></AreaChart></ResponsiveContainer></div> : <EmptyState icon={<BarChart3 size={28} />} title="Belum ada data portofolio" description="Mulai investasi pertama Anda untuk melihat perkembangan nilai aset." />}</DashboardCard>; }
-export function AssetAllocation({ data }: { data: Allocation[] }) { return <DashboardCard className="p-5 sm:p-6"><h2 className="font-semibold text-white">Alokasi Aset</h2>{data.length ? <><div className="mt-3 h-48"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={data} dataKey="value" innerRadius={50} outerRadius={76} paddingAngle={3}>{data.map((item) => <Cell key={item.name} fill={item.color} />)}</Pie></PieChart></ResponsiveContainer></div><div className="space-y-2">{data.map((item) => <div className="flex items-center justify-between text-sm" key={item.name}><span className="flex items-center gap-2 text-slate-300"><i className="h-2.5 w-2.5 rounded-full" style={{ background: item.color }} />{item.name}</span><span className="font-medium text-white">{item.value}%</span></div>)}</div></> : <EmptyState icon={<PieIcon size={28} />} title="Belum ada alokasi aset" description="Alokasi akan muncul setelah Anda memiliki aset." />}</DashboardCard>; }
+export function PortfolioChart({ data }: { data: ChartPoint[] }) {
+    return (
+        <DashboardCard className="p-5 sm:p-6">
+            <div>
+                <h2 className="font-semibold text-white">Performa Portofolio</h2>
+                <p className="mt-1 text-sm text-slate-400">
+                    Perkembangan nilai investasi
+                </p>
+            </div>
+            {data.length ? (
+                <div className="mt-5 h-72">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={data}>
+                            <defs>
+                                <linearGradient id="portfolioFill" x1="0" x2="0" y1="0" y2="1">
+                                    <stop offset="0%" stopColor="#22d3ee" stopOpacity={0.32} />
+                                    <stop offset="100%" stopColor="#22d3ee" stopOpacity={0} />
+                                </linearGradient>
+                            </defs>
+                            <XAxis
+                                dataKey="label"
+                                axisLine={false}
+                                tickLine={false}
+                                tick={{ fill: "#94a3b8", fontSize: 12 }}
+                            />
+                            <YAxis hide />
+                            <Tooltip
+                                formatter={(value) => formatRupiah(Number(value))}
+                                contentStyle={{
+                                    background: "#0b1220",
+                                    border: "1px solid #334155",
+                                    borderRadius: 12,
+                                }}
+                            />
+                            <Area
+                                dataKey="value"
+                                type="monotone"
+                                stroke="#22d3ee"
+                                strokeWidth={3}
+                                fill="url(#portfolioFill)"
+                            />
+                        </AreaChart>
+                    </ResponsiveContainer>
+                </div>
+            ) : (
+                <EmptyState
+                    icon={<BarChart3 size={28} />}
+                    title="Belum ada data portofolio"
+                    description="Mulai investasi pertama Anda untuk melihat perkembangan nilai aset."
+                />
+            )}
+        </DashboardCard>
+    );
+}
+export function AssetAllocation({ data }: { data: Allocation[] }) {
+    return (
+        <DashboardCard className="p-5 sm:p-6">
+            <h2 className="font-semibold text-white">Alokasi Aset</h2>
+            {data.length ? (
+                <>
+                    <div className="mt-3 h-48">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                                <Pie
+                                    data={data}
+                                    dataKey="value"
+                                    innerRadius={50}
+                                    outerRadius={76}
+                                    paddingAngle={3}
+                                >
+                                    {data.map((item) => (
+                                        <Cell key={item.name} fill={item.color} />
+                                    ))}
+                                </Pie>
+                            </PieChart>
+                        </ResponsiveContainer>
+                    </div>
+                    <div className="space-y-2">
+                        {data.map((item) => (
+                            <div
+                                className="flex items-center justify-between text-sm"
+                                key={item.name}
+                            >
+                                <span className="flex items-center gap-2 text-slate-300">
+                                    <i
+                                        className="h-2.5 w-2.5 rounded-full"
+                                        style={{ background: item.color }}
+                                    />
+                                    {item.name}
+                                </span>
+                                <span className="font-medium text-white">{item.value}%</span>
+                            </div>
+                        ))}
+                    </div>
+                </>
+            ) : (
+                <EmptyState
+                    icon={<PieIcon size={28} />}
+                    title="Belum ada alokasi aset"
+                    description="Alokasi akan muncul setelah Anda memiliki aset."
+                />
+            )}
+        </DashboardCard>
+    );
+}

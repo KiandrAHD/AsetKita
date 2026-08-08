@@ -2,4 +2,40 @@ import { Search } from "lucide-react";
 import { MobileMenuButton, NotificationLink } from "./Sidebar";
 import { greeting, formatLastLogin } from "@/utils/formatters";
 import type { DashboardProfile } from "@/types/dashboard";
-export default function Header({ profile, onMenu }: { profile: DashboardProfile; onMenu: () => void }) { return <header className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 bg-[#08111d]/75 px-4 py-4 backdrop-blur sm:px-6"><div className="flex items-center gap-3"><MobileMenuButton onClick={onMenu} /><div><p className="text-sm text-cyan-200">{greeting()} ✦</p><h1 className="text-xl font-semibold text-white sm:text-2xl">{profile.name}</h1><p className="mt-1 text-xs text-slate-400">Login terakhir: {formatLastLogin(profile.lastLogin)}</p></div></div><div className="ml-auto flex items-center gap-2"><label className="hidden items-center gap-2 rounded-xl border border-white/10 bg-white/[.03] px-3 py-2 text-sm text-slate-400 sm:flex"><Search size={16} /><input placeholder="Cari aset..." className="w-32 bg-transparent outline-none placeholder:text-slate-500" /></label><NotificationLink /><span className="flex h-9 w-9 items-center justify-center rounded-full bg-cyan-400/15 text-sm font-bold text-cyan-300">{profile.name.slice(0, 1).toUpperCase()}</span></div></header>; }
+export default function Header({
+    profile,
+    onMenu,
+}: {
+    profile: DashboardProfile;
+    onMenu: () => void;
+}) {
+    return (
+        <header className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 bg-[#08111d]/75 px-4 py-4 backdrop-blur sm:px-6">
+            <div className="flex items-center gap-3">
+                <MobileMenuButton onClick={onMenu} />
+                <div>
+                    <p className="text-sm text-cyan-200">{greeting()} ✦</p>
+                    <h1 className="text-xl font-semibold text-white sm:text-2xl">
+                        {profile.name}
+                    </h1>
+                    <p className="mt-1 text-xs text-slate-400">
+                        Login terakhir: {formatLastLogin(profile.lastLogin)}
+                    </p>
+                </div>
+            </div>
+            <div className="ml-auto flex items-center gap-2">
+                <label className="hidden items-center gap-2 rounded-xl border border-white/10 bg-white/[.03] px-3 py-2 text-sm text-slate-400 sm:flex">
+                    <Search size={16} />
+                    <input
+                        placeholder="Cari aset..."
+                        className="w-32 bg-transparent outline-none placeholder:text-slate-500"
+                    />
+                </label>
+                <NotificationLink />
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-cyan-400/15 text-sm font-bold text-cyan-300">
+                    {profile.name.slice(0, 1).toUpperCase()}
+                </span>
+            </div>
+        </header>
+    );
+}

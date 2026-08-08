@@ -3,4 +3,60 @@ import DashboardCard from "./DashboardCard";
 import { EmptyState } from "./State";
 import { formatPercent, formatRupiah } from "@/utils/formatters";
 import type { Holding } from "@/types/dashboard";
-export default function PortfolioList({ holdings }: { holdings: Holding[] }) { return <DashboardCard className="p-5 sm:p-6"><div className="flex items-center justify-between"><div><h2 className="font-semibold text-white">Portofolio Saya</h2><p className="mt-1 text-sm text-slate-400">Aset yang Anda miliki</p></div><ArrowUpRight size={18} className="text-cyan-300" /></div>{holdings.length ? <div className="mt-5 space-y-3">{holdings.map((item) => <div className="flex items-center justify-between gap-3 rounded-2xl bg-[#091321]/80 p-3" key={item.id}><div className="flex min-w-0 items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl text-xs font-bold" style={{ color: item.color, background: `${item.color}22` }}>{item.symbol.slice(0, 2)}</span><div className="min-w-0"><p className="truncate font-medium text-white">{item.name}</p><p className="text-xs text-slate-400">{item.quantity.toLocaleString("id-ID", { maximumFractionDigits: 5 })} {item.symbol}</p></div></div><div className="text-right"><p className="font-semibold text-white">{formatRupiah(item.quantity * item.price)}</p><p className={`text-xs font-medium ${item.changePercent >= 0 ? "text-emerald-400" : "text-rose-400"}`}>{formatPercent(item.changePercent)}</p></div></div>)}</div> : <EmptyState icon={<BriefcaseBusiness size={28} />} title="Belum memiliki aset" description="Silakan lakukan top up terlebih dahulu untuk memulai investasi." />}</DashboardCard>; }
+export default function PortfolioList({ holdings }: { holdings: Holding[] }) {
+    return (
+        <DashboardCard className="p-5 sm:p-6">
+            <div className="flex items-center justify-between">
+                <div>
+                    <h2 className="font-semibold text-white">Portofolio Saya</h2>
+                    <p className="mt-1 text-sm text-slate-400">Aset yang Anda miliki</p>
+                </div>
+                <ArrowUpRight size={18} className="text-cyan-300" />
+            </div>
+            {holdings.length ? (
+                <div className="mt-5 space-y-3">
+                    {holdings.map((item) => (
+                        <div
+                            className="flex items-center justify-between gap-3 rounded-2xl bg-[#091321]/80 p-3"
+                            key={item.id}
+                        >
+                            <div className="flex min-w-0 items-center gap-3">
+                                <span
+                                    className="flex h-10 w-10 items-center justify-center rounded-xl text-xs font-bold"
+                                    style={{ color: item.color, background: `${item.color}22` }}
+                                >
+                                    {item.symbol.slice(0, 2)}
+                                </span>
+                                <div className="min-w-0">
+                                    <p className="truncate font-medium text-white">{item.name}</p>
+                                    <p className="text-xs text-slate-400">
+                                        {item.quantity.toLocaleString("id-ID", {
+                                            maximumFractionDigits: 5,
+                                        })}{" "}
+                                        {item.symbol}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="text-right">
+                                <p className="font-semibold text-white">
+                                    {formatRupiah(item.quantity * item.price)}
+                                </p>
+                                <p
+                                    className={`text-xs font-medium ${item.changePercent >= 0 ? "text-emerald-400" : "text-rose-400"}`}
+                                >
+                                    {formatPercent(item.changePercent)}
+                                </p>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            ) : (
+                <EmptyState
+                    icon={<BriefcaseBusiness size={28} />}
+                    title="Belum memiliki aset"
+                    description="Silakan lakukan top up terlebih dahulu untuk memulai investasi."
+                />
+            )}
+        </DashboardCard>
+    );
+}
