@@ -2,10 +2,111 @@ import { Check, Globe2, Layers3, ShieldCheck, Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
 import MarketingShell from "@/components/marketing/MarketingShell";
 
-const values = [{ title: "Inovasi", text: "Teknologi yang memudahkan pengelolaan aset sehari-hari.", icon: Sparkles }, { title: "Keamanan", text: "Privasi dan perlindungan pengguna selalu menjadi prioritas.", icon: ShieldCheck }, { title: "Transparansi", text: "Informasi yang jelas untuk keputusan yang lebih tenang.", icon: Globe2 }, { title: "Kolaborasi", text: "Produk yang terus tumbuh bersama kebutuhan pengguna.", icon: Layers3 }];
+const values = [
+    {
+        title: "Inovasi",
+        text: "Teknologi yang memudahkan pengelolaan aset sehari-hari.",
+        icon: Sparkles,
+    },
+    {
+        title: "Keamanan",
+        text: "Privasi dan perlindungan pengguna selalu menjadi prioritas.",
+        icon: ShieldCheck,
+    },
+    {
+        title: "Transparansi",
+        text: "Informasi yang jelas untuk keputusan yang lebih tenang.",
+        icon: Globe2,
+    },
+    {
+        title: "Kolaborasi",
+        text: "Produk yang terus tumbuh bersama kebutuhan pengguna.",
+        icon: Layers3,
+    },
+];
 
-export default function About() { return <MarketingShell>
-    <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-24 lg:px-8"><div className="relative overflow-hidden rounded-[2.5rem] border border-cyan-400/20 bg-gradient-to-br from-cyan-500/15 via-[#111827]/90 to-teal-500/15 px-6 py-14 sm:px-10 lg:px-14"><p className="text-sm font-medium uppercase tracking-[.3em] text-cyan-300">Tentang AsetKita</p><h1 className="mt-5 max-w-4xl text-4xl font-semibold leading-tight text-white sm:text-5xl lg:text-6xl">Masa depan manajemen aset digital <span className="text-cyan-400">untuk Indonesia.</span></h1><p className="mt-6 max-w-3xl leading-8 text-slate-300">AsetKita membantu masyarakat memahami, memantau, dan mengembangkan aset melalui dashboard terintegrasi, analisis data, serta kecerdasan buatan.</p><Link to="/register" className="mt-8 inline-flex rounded-full bg-cyan-500 px-6 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400">Jelajahi Platform</Link></div></section>
-    <section className="mx-auto grid max-w-7xl gap-8 px-4 py-16 sm:px-6 lg:grid-cols-2 lg:px-8 lg:py-24"><div><p className="text-sm font-medium uppercase tracking-[.3em] text-cyan-300">Mengapa kami hadir</p><h2 className="mt-4 text-3xl font-semibold text-white sm:text-4xl">Aset Anda seharusnya mudah dipahami.</h2><p className="mt-5 leading-8 text-slate-300">Berbagai aset sering tersebar di banyak layanan. Kami membangun satu pandangan yang lebih utuh agar setiap orang dapat melihat kondisi keuangannya tanpa kerumitan.</p><ul className="mt-7 space-y-3 text-sm text-slate-300">{["Dashboard aset yang mudah digunakan", "Insight AI yang kontekstual", "Analisis market yang mudah dibaca"].map((item) => <li key={item} className="flex items-center gap-3"><Check className="text-cyan-300" size={18} />{item}</li>)}</ul></div><div className="grid gap-4 sm:grid-cols-2">{[["2026", "Tahun pengembangan"], ["10+", "Fitur utama"], ["100%", "Fokus Indonesia"], ["24/7", "AI siap membantu"]].map(([value, label]) => <div key={label} className="rounded-[1.5rem] border border-white/10 bg-[#111827]/75 p-6 text-center"><p className="text-3xl font-semibold text-white">{value}</p><p className="mt-2 text-sm text-slate-400">{label}</p></div>)}</div></section>
-    <section className="mx-auto max-w-7xl px-4 pb-20 sm:px-6 lg:px-8"><div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">{values.map(({ title, text, icon: Icon }) => <article key={title} className="rounded-[1.6rem] border border-white/10 bg-[#111827]/75 p-6"><Icon className="text-cyan-300" size={22} /><h2 className="mt-5 font-semibold text-white">{title}</h2><p className="mt-3 text-sm leading-7 text-slate-400">{text}</p></article>)}</div></section>
-</MarketingShell>; }
+export default function About() {
+    return (
+        <MarketingShell>
+            <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-24 lg:px-8">
+                <div className="relative overflow-hidden rounded-[2.5rem] border border-cyan-400/20 bg-gradient-to-br from-cyan-500/15 via-[#111827]/90 to-teal-500/15 px-6 py-14 sm:px-10 lg:px-14">
+                    <p className="text-sm font-medium uppercase tracking-[.3em] text-cyan-300">
+                        Tentang AsetKita
+                    </p>
+                    <h1 className="mt-5 max-w-4xl text-4xl font-semibold leading-tight text-white sm:text-5xl lg:text-6xl">
+                        Masa depan manajemen aset digital{" "}
+                        <span className="text-cyan-400">untuk Indonesia.</span>
+                    </h1>
+                    <p className="mt-6 max-w-3xl leading-8 text-slate-300">
+                        AsetKita membantu masyarakat memahami, memantau, dan mengembangkan
+                        aset melalui dashboard terintegrasi, analisis data, serta kecerdasan
+                        buatan.
+                    </p>
+                    <Link
+                        to="/register"
+                        className="mt-8 inline-flex rounded-full bg-cyan-500 px-6 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400"
+                    >
+                        Jelajahi Platform
+                    </Link>
+                </div>
+            </section>
+            <section className="mx-auto grid max-w-7xl gap-8 px-4 py-16 sm:px-6 lg:grid-cols-2 lg:px-8 lg:py-24">
+                <div>
+                    <p className="text-sm font-medium uppercase tracking-[.3em] text-cyan-300">
+                        Mengapa kami hadir
+                    </p>
+                    <h2 className="mt-4 text-3xl font-semibold text-white sm:text-4xl">
+                        Aset Anda seharusnya mudah dipahami.
+                    </h2>
+                    <p className="mt-5 leading-8 text-slate-300">
+                        Berbagai aset sering tersebar di banyak layanan. Kami membangun satu
+                        pandangan yang lebih utuh agar setiap orang dapat melihat kondisi
+                        keuangannya tanpa kerumitan.
+                    </p>
+                    <ul className="mt-7 space-y-3 text-sm text-slate-300">
+                        {[
+                            "Dashboard aset yang mudah digunakan",
+                            "Insight AI yang kontekstual",
+                            "Analisis market yang mudah dibaca",
+                        ].map((item) => (
+                            <li key={item} className="flex items-center gap-3">
+                                <Check className="text-cyan-300" size={18} />
+                                {item}
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                    {[
+                        ["2026", "Tahun pengembangan"],
+                        ["10+", "Fitur utama"],
+                        ["100%", "Fokus Indonesia"],
+                        ["24/7", "AI siap membantu"],
+                    ].map(([value, label]) => (
+                        <div
+                            key={label}
+                            className="rounded-[1.5rem] border border-white/10 bg-[#111827]/75 p-6 text-center"
+                        >
+                            <p className="text-3xl font-semibold text-white">{value}</p>
+                            <p className="mt-2 text-sm text-slate-400">{label}</p>
+                        </div>
+                    ))}
+                </div>
+            </section>
+            <section className="mx-auto max-w-7xl px-4 pb-20 sm:px-6 lg:px-8">
+                <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+                    {values.map(({ title, text, icon: Icon }) => (
+                        <article
+                            key={title}
+                            className="rounded-[1.6rem] border border-white/10 bg-[#111827]/75 p-6"
+                        >
+                            <Icon className="text-cyan-300" size={22} />
+                            <h2 className="mt-5 font-semibold text-white">{title}</h2>
+                            <p className="mt-3 text-sm leading-7 text-slate-400">{text}</p>
+                        </article>
+                    ))}
+                </div>
+            </section>
+        </MarketingShell>
+    );
+}
