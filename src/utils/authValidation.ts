@@ -5,7 +5,8 @@ export const passwordRules = (password: string) => [
     { label: "Mengandung karakter khusus", valid: /[^A-Za-z0-9]/.test(password) },
 ];
 
-export const isStrongPassword = (password: string) => passwordRules(password).every((rule) => rule.valid);
+export const isStrongPassword = (password: string) =>
+    passwordRules(password).every((rule) => rule.valid);
 
 export function normalizePhone(value: string) {
     const digits = value.replace(/\D/g, "");
