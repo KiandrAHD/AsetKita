@@ -1,18 +1,107 @@
 export type AccountMode = "demo" | "member";
 export type AssetCategory = "saham" | "kripto" | "logam";
 export type TradeSide = "buy" | "sell";
-export type Asset = { id: string; symbol: string; name: string; category: AssetCategory; currency: "IDR" | "USD"; ath: number; unit: string; color: string; basePrice: number };
-export type MarketPrice = { assetId: string; price: number; previousPrice: number; changePercent: number; updatedAt?: Date };
+export type Asset = {
+    id: string;
+    symbol: string;
+    name: string;
+    category: AssetCategory;
+    currency: "IDR" | "USD";
+    ath: number;
+    unit: string;
+    color: string;
+    basePrice: number;
+};
+export type MarketPrice = {
+    assetId: string;
+    price: number;
+    previousPrice: number;
+    changePercent: number;
+    updatedAt?: Date;
+};
 export type PriceHistoryPoint = { label: string; value: number; at?: Date };
-export type Holding = { id: string; assetId?: string; symbol: string; name: string; quantity: number; price: number; averageBuy?: number; changePercent: number; color: string };
-export type Transaction = { id: string; uid?: string; assetId: string; symbol: string; name: string; side: TradeSide; quantity: number; price: number; total: number; status: "completed"; createdAt: Date };
+export type Holding = {
+    id: string;
+    assetId?: string;
+    symbol: string;
+    name: string;
+    quantity: number;
+    price: number;
+    averageBuy?: number;
+    changePercent: number;
+    color: string;
+};
+export type Transaction = {
+    id: string;
+    uid?: string;
+    assetId: string;
+    symbol: string;
+    name: string;
+    side: TradeSide;
+    quantity: number;
+    price: number;
+    total: number;
+    status: "completed";
+    createdAt: Date;
+};
 export type Watchlist = { assetIds: string[] };
-export type UserSettings = { marketAlerts: boolean; aiInsights: boolean; systemNotifications: boolean; emailDigest: boolean; analytics: boolean; personalizedRecommendations: boolean; portfolioSharing: boolean };
-export type DemoSession = { nickname: string; initialBalance: number; isDemo: true; balance?: number; holdings?: Holding[]; transactions?: Transaction[]; watchlist?: string[] };
-export type DashboardProfile = { uid: string; name: string; email?: string; phone?: string; photoURL?: string; joinedAt?: Date; lastLogin?: Date; financialScore: number };
-export type DashboardSummary = { balance: number; totalAssets: number; portfolioValue: number; financialScore: number };
+export type UserSettings = {
+    marketAlerts: boolean;
+    aiInsights: boolean;
+    systemNotifications: boolean;
+    emailDigest: boolean;
+    analytics: boolean;
+    personalizedRecommendations: boolean;
+    portfolioSharing: boolean;
+};
+export type DemoSession = {
+    nickname: string;
+    initialBalance: number;
+    isDemo: true;
+    balance?: number;
+    holdings?: Holding[];
+    transactions?: Transaction[];
+    watchlist?: string[];
+};
+export type DashboardProfile = {
+    uid: string;
+    name: string;
+    email?: string;
+    phone?: string;
+    photoURL?: string;
+    joinedAt?: Date;
+    lastLogin?: Date;
+    financialScore: number;
+};
+export type DashboardSummary = {
+    balance: number;
+    totalAssets: number;
+    portfolioValue: number;
+    financialScore: number;
+};
 export type ChartPoint = { label: string; value: number };
 export type Allocation = { name: string; value: number; color: string };
-export type NewsItem = { id: string; title: string; source: string; publishedAt: string; url: string; category?: string };
-export type MarketAsset = { symbol: string; name: string; price: number; changePercent: number; marketCap?: number; volume?: number };
-export type DashboardData = { mode: AccountMode; profile: DashboardProfile; summary: DashboardSummary; holdings: Holding[]; chart: ChartPoint[]; allocation: Allocation[] };
+export type NewsItem = {
+    id: string;
+    title: string;
+    source: string;
+    publishedAt: string;
+    url: string;
+    category?: string;
+};
+export type MarketAsset = {
+    symbol: string;
+    name: string;
+    price: number;
+    changePercent: number;
+    marketCap?: number;
+    volume?: number;
+};
+export type DashboardData = {
+    mode: AccountMode;
+    profile: DashboardProfile;
+    summary: DashboardSummary;
+    holdings: Holding[];
+    chart: ChartPoint[];
+    allocation: Allocation[];
+};
