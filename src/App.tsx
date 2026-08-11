@@ -4,7 +4,9 @@ import { ensureTesterAccount } from "@/services/authService";
 
 function App() {
     useEffect(() => {
-        void ensureTesterAccount();
+        ensureTesterAccount().catch((err) => {
+            console.warn("Auto-login tester account error:", err);
+        });
     }, []);
 
     return <AppRouter />;

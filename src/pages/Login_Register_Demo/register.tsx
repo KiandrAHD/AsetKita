@@ -72,13 +72,18 @@ export default function Register() {
         setLoading(true);
         try {
             await requestEmailOtp(form.email, "register");
-            sessionStorage.setItem("asetkita-register-otp", "");
+            const fallbackCode = sessionStorage.getItem("asetkita-register-otp");
+            setOtp("");
             setStep(3);
-            setNotice("Kode enam digit telah dikirim ke email aktif Anda.");
+            if (fallbackCode) {
+                setNotice(`Kode verifikasi sementara telah dibuat: ${fallbackCode}`);
+            } else {
+                setNotice("Kode enam digit telah dikirim ke email aktif Anda.");
+            }
         } catch {
             const fallbackCode = String(Math.floor(100000 + Math.random() * 900000));
             sessionStorage.setItem("asetkita-register-otp", fallbackCode);
-            setOtp(fallbackCode);
+            setOtp("");
             setStep(3);
             setNotice(`Kode verifikasi sementara telah dibuat: ${fallbackCode}`);
         } finally {

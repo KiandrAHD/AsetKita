@@ -62,11 +62,13 @@ export async function getDashboardData(uid?: string): Promise<DashboardData> {
                 color: "#64748b",
             });
         return {
-            mode: "demo",
+            mode: session?.isDemo === false ? "member" : "demo",
             profile: {
-                uid: "demo",
+                uid: session?.email ? `user_${session.email}` : "demo",
                 name: session?.nickname ?? "Investor Demo",
-                financialScore: 0,
+                email: session?.email,
+                phone: session?.nomorHP,
+                financialScore: 85,
             },
             summary: {
                 balance: state.balance,

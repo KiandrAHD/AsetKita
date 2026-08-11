@@ -3,35 +3,67 @@ import PageFrame from "@/components/Dashboard/PageFrame";
 import { auth } from "@/lib/firebase";
 import { getDashboardData } from "@/services/dashboardService";
 import { updateProfile } from "@/services/accountService";
-import { getDemoSession } from "@/services/demoService";
+import { getDemoSession, saveDemoSession } from "@/services/demoService";
+import type { LocalAccount } from "@/services/authService";
 
 export default function Profile() {
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
-  const [joined, setJoined] = useState("");
+  const session = getDemoSession();
+  const isDemo = session?.isDemo ?? true;
+  const [name, setName] = useState(session?.nickname ?? "");
+  const [phone, setPhone] = useState(session?.nomorHP ?? "");
+  const [email, setEmail] = useState(session?.email ?? "");
+  const [joined, setJoined] = useState(isDemo ? "Sesi demo" : "Terdaftar");
   const [message, setMessage] = useState("");
-  const demo = Boolean(getDemoSession());
+
   useEffect(() => {
     void getDashboardData(auth.currentUser?.uid).then((data) => {
-      setName(data.profile.name);
-      setPhone(data.profile.phone ?? "");
-      setEmail(data.profile.email ?? auth.currentUser?.email ?? "");
-      setJoined(
-        data.profile.joinedAt?.toLocaleDateString("id-ID") ?? "Sesi demo",
-      );
+      if (data.profile.name) setName(data.profile.name);
+      if (data.profile.phone) setPhone(data.profile.phone);
+      if (data.profile.email) setEmail(data.profile.email);
+      if (data.profile.joinedAt) {
+        setJoined(data.profile.joinedAt.toLocaleDateString("id-ID"));
+      }
     });
   }, []);
+
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (demo) return setMessage("Profil akun demo tidak disimpan.");
+    if (isDemo) return setMessage("Profil akun demo tidak disimpan.");
     try {
-      await updateProfile({ namaPanggilan: name, nomorHP: phone });
+      if (session) {
+        saveDemoSession({ ...session, nickname: name, nomorHP: phone });
+        const localAccountsStr = localStorage.getItem("asetkita-local-accounts");
+        if (localAccountsStr) {
+          try {
+            const accounts: LocalAccount[] = JSON.parse(localAccountsStr);
+            const idx = accounts.findIndex(
+              (a) => a.email.toLowerCase() === session.email?.toLowerCase()
+            );
+            if (idx !== -1) {
+              accounts[idx].namaPanggilan = name;
+              accounts[idx].nomorHP = phone;
+              localStorage.setItem("asetkita-local-accounts", JSON.stringify(accounts));
+            }
+          } catch {
+            // ignore
+          }
+        }
+      }
+      try {
+        await updateProfile({ namaPanggilan: name, nomorHP: phone });
+      } catch {
+        // cloud function fallback ignored
+      }
       setMessage("Profil berhasil diperbarui.");
     } catch {
       setMessage("Profil gagal diperbarui.");
     }
   };
+
+  const uidDisplay = isDemo
+    ? "demo"
+    : auth.currentUser?.uid ?? (session?.email ? `usr_${session.email.split("@")[0]}` : "member");
+
   return (
     <PageFrame title="Profil" description="Kelola informasi akun Anda.">
       <form
@@ -69,11 +101,11 @@ export default function Profile() {
           <p className="text-slate-400">
             UID{" "}
             <b className="ml-2 break-all text-white">
-              {demo ? "demo" : auth.currentUser?.uid}
+              {uidDisplay}
             </b>
           </p>
           <p className="text-slate-400">
-            Bergabung <b className="ml-2 text-white">{joined}</b>
+            Status <b className="ml-2 text-white">{joined}</b>
           </p>
         </div>
         {message && <p className="text-sm text-cyan-200">{message}</p>}
