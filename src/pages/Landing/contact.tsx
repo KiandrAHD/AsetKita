@@ -43,10 +43,10 @@ const details = [
     },
     {
         title: "WhatsApp",
-        value: "+62 21 1234 5678",
+        value: "+62 851-9608-6455",
         note: "Senin–Jumat, 09.00–18.00 WIB",
         icon: MessageCircle,
-        href: "https://wa.me/622112345678",
+        href: "https://wa.me/6285196086455",
     },
     {
         title: "Alamat",
