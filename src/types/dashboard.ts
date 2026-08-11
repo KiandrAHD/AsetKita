@@ -56,8 +56,11 @@ export type UserSettings = {
 };
 export type DemoSession = {
     nickname: string;
+    email?: string;
+    namaLengkap?: string;
+    nomorHP?: string;
     initialBalance: number;
-    isDemo: true;
+    isDemo: boolean;
     balance?: number;
     holdings?: Holding[];
     transactions?: Transaction[];

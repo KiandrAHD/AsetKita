@@ -2,6 +2,8 @@ import { useOutletContext } from "react-router-dom";
 import { auth } from "@/lib/firebase";
 import Header from "@/components/Dashboard/Header";
 import { useDashboard } from "@/hooks/useDashboard";
+import { getDemoSession } from "@/services/demoService";
+
 export default function PageFrame({
     title,
     description,
@@ -13,9 +15,12 @@ export default function PageFrame({
 }) {
     const { openMobileMenu } = useOutletContext<{ openMobileMenu: () => void }>();
     const { data } = useDashboard(auth.currentUser);
+    const demoSession = getDemoSession();
     const profile = data?.profile ?? {
-        uid: "",
-        name: "AsetKita",
+        uid: demoSession?.email ? `user_${demoSession.email}` : "demo",
+        name: demoSession?.nickname ?? "Investor",
+        email: demoSession?.email,
+        phone: demoSession?.nomorHP,
         financialScore: 0,
     };
     return (

@@ -103,7 +103,7 @@ export default function Sidebar({
                             {demo?.nickname ?? "AsetKita Member"}
                         </p>
                         <p className="text-xs text-slate-400">
-                            {demo ? "Akun demo" : "Investor"}
+                            {demo?.isDemo ? "Akun demo" : "Investor"}
                         </p>
                     </div>
                 )}
