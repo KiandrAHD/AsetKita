@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { doc, onSnapshot } from "firebase/firestore";
+import { auth, db } from "@/lib/firebase";
 import { getDashboardData } from "@/services/dashboardService";
 import type { DashboardData } from "@/types/dashboard";
 
@@ -33,6 +34,39 @@ export function useDashboard(_user?: User | null) {
 
   useEffect(() => {
     void load();
+  }, [load]);
+
+  // Real-time Firestore sync across devices
+  useEffect(() => {
+    const uid = currentUser?.uid ?? auth.currentUser?.uid;
+    if (!uid) return;
+
+    try {
+      const walletRef = doc(db, "wallets", uid);
+      const unsub = onSnapshot(
+        walletRef,
+        () => {
+          void load();
+        },
+        (err) => {
+          console.warn("Wallet snapshot listener error:", err);
+        }
+      );
+      return () => unsub();
+    } catch {
+      // Ignore if Firestore is unavailable
+    }
+  }, [currentUser, load]);
+
+  // Sync across tabs/windows on local storage changes
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === "asetkita-demo" || e.key === "asetkita-local-accounts") {
+        void load();
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
   }, [load]);
 
   return { data, loading, error, reload: load };
