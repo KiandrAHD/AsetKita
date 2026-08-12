@@ -22,6 +22,11 @@ import type {
     Watchlist,
 } from "@/types/dashboard";
 
+const USD_TO_IDR = 16000;
+
+// Dynamic In-Memory Store for Live Real-Time Ticker
+const livePricesStore: Record<string, MarketPrice> = {};
+
 const bucket = () => Math.floor(Date.now() / (4 * 60 * 60 * 1000));
 const seeded = (text: string) => {
     let value = 0;
@@ -37,13 +42,95 @@ const simulated = (asset: Asset, at = bucket()) => {
             1 + (seeded(`${asset.id}:${at - i}`) - 0.5) * 2 * volatility(asset);
     return Math.max(1, Math.round(asset.basePrice * factor));
 };
+
 type RemotePrice = {
     price?: number;
     previousPrice?: number;
     changePercent?: number;
     updatedAt?: { toDate?: () => Date };
 };
+
+// --- REAL-TIME FREE PUBLIC API FETCHERS ---
+
+// Fetch real-time crypto prices from Binance (100% Free, CORS allowed)
+async function fetchBinanceCryptoPrices(): Promise<Map<string, { price: number; changePercent: number }>> {
+    const map = new Map<string, { price: number; changePercent: number }>();
+    try {
+        const res = await fetch("https://api.binance.com/api/v3/ticker/24hr", {
+            signal: AbortSignal.timeout(3000),
+        });
+        if (!res.ok) return map;
+        const data = await res.json();
+        if (Array.isArray(data)) {
+            for (const item of data) {
+                if (item.symbol && item.symbol.endsWith("USDT")) {
+                    const symbol = item.symbol.replace("USDT", "");
+                    const priceInUsd = parseFloat(item.lastPrice);
+                    const changePercent = parseFloat(item.priceChangePercent);
+                    if (!isNaN(priceInUsd)) {
+                        map.set(symbol, {
+                            price: Math.round(priceInUsd * USD_TO_IDR),
+                            changePercent: isNaN(changePercent) ? 0 : changePercent,
+                        });
+                    }
+                }
+            }
+        }
+    } catch {
+        /* Fallback silently */
+    }
+    return map;
+}
+
+// Fetch real-time prices from CoinGecko Public API as secondary crypto source
+async function fetchCoinGeckoCryptoPrices(): Promise<Map<string, { price: number; changePercent: number }>> {
+    const map = new Map<string, { price: number; changePercent: number }>();
+    try {
+        const url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,binancecoin,solana,ripple,cardano,dogecoin,polkadot,chainlink,avalanche-2,shiba-inu,tron,litecoin,bitcoin-cash,matic-network&vs_currencies=usd&include_24hr_change=true";
+        const res = await fetch(url, { signal: AbortSignal.timeout(3000) });
+        if (!res.ok) return map;
+        const data = await res.json();
+        const mapping: Record<string, string> = {
+            bitcoin: "BTC",
+            ethereum: "ETH",
+            binancecoin: "BNB",
+            solana: "SOL",
+            ripple: "XRP",
+            cardano: "ADA",
+            dogecoin: "DOGE",
+            polkadot: "DOT",
+            chainlink: "LINK",
+            "avalanche-2": "AVAX",
+            "shiba-inu": "SHIB",
+            tron: "TRX",
+            litecoin: "LTC",
+            "bitcoin-cash": "BCH",
+            "matic-network": "MATIC",
+        };
+        for (const [cgId, val] of Object.entries(data)) {
+            const symbol = mapping[cgId];
+            if (symbol && (val as any).usd) {
+                const priceInUsd = (val as any).usd;
+                const changePercent = (val as any).usd_24h_change || 0;
+                map.set(symbol, {
+                    price: Math.round(priceInUsd * USD_TO_IDR),
+                    changePercent: parseFloat(changePercent.toFixed(2)),
+                });
+            }
+        }
+    } catch {
+        /* Fallback silently */
+    }
+    return map;
+}
+
+// Initialize and fetch real-time market prices
 export async function getMarketPrices(): Promise<Record<string, MarketPrice>> {
+    // If livePricesStore is already populated, return a fresh object copy
+    if (Object.keys(livePricesStore).length > 0) {
+        return { ...livePricesStore };
+    }
+
     let remote = new Map<string, RemotePrice>();
     try {
         const snap = await getDocs(collection(db, "marketPrices"));
@@ -51,45 +138,139 @@ export async function getMarketPrices(): Promise<Record<string, MarketPrice>> {
             snap.docs.map((row) => [row.id, row.data() as RemotePrice]),
         );
     } catch {
-        /* fallback */
+        /* Firestore fallback */
     }
-    return Object.fromEntries(
-        assets.map((asset) => {
-            const row = remote.get(asset.id);
-            const price = Number(row?.price ?? simulated(asset));
-            const previousPrice = Number(
+
+    // Try API fetchers
+    let cryptoMap = await fetchBinanceCryptoPrices();
+    if (cryptoMap.size === 0) {
+        cryptoMap = await fetchCoinGeckoCryptoPrices();
+    }
+
+    for (const asset of assets) {
+        const row = remote.get(asset.id);
+        let realPriceObj: { price: number; changePercent: number } | null = null;
+
+        if (asset.category === "kripto" && cryptoMap.has(asset.symbol)) {
+            realPriceObj = cryptoMap.get(asset.symbol)!;
+        }
+
+        let price: number;
+        let changePercent: number;
+        let previousPrice: number;
+
+        if (realPriceObj) {
+            price = realPriceObj.price;
+            changePercent = realPriceObj.changePercent;
+            previousPrice = Math.round(price / (1 + changePercent / 100));
+        } else {
+            price = Number(row?.price ?? simulated(asset));
+            previousPrice = Number(
                 row?.previousPrice ?? simulated(asset, bucket() - 1),
             );
-            return [
-                asset.id,
-                {
-                    assetId: asset.id,
-                    price,
-                    previousPrice,
-                    changePercent: Number(
-                        row?.changePercent ??
-                        ((price / previousPrice - 1) * 100).toFixed(2),
-                    ),
-                    updatedAt: row?.updatedAt?.toDate?.() ?? new Date(),
-                },
-            ];
-        }),
-    );
-}
-export function getHistory(assetId: string): PriceHistoryPoint[] {
-    const asset = assets.find((item) => item.id === assetId) ?? assets[0];
-    return Array.from({ length: 30 }, (_, index) => {
-        const at = bucket() - 29 + index;
-        return {
-            label: new Date(at * 4 * 60 * 60 * 1000).toLocaleDateString("id-ID", {
-                day: "2-digit",
-                month: "short",
-            }),
-            value: simulated(asset, at),
-            at: new Date(at * 4 * 60 * 60 * 1000),
+            changePercent = Number(
+                row?.changePercent ??
+                    ((price / previousPrice - 1) * 100).toFixed(2),
+            );
+        }
+
+        livePricesStore[asset.id] = {
+            assetId: asset.id,
+            price,
+            previousPrice,
+            changePercent,
+            updatedAt: row?.updatedAt?.toDate?.() ?? new Date(),
         };
-    });
+    }
+
+    return { ...livePricesStore };
 }
+
+// Subscribe to Live Ticker: updates prices with live API + micro-tick fluctuations every intervalMs (e.g. 3000ms = 3 seconds)
+export function subscribeRealTimeMarketPrices(
+    onUpdate: (prices: Record<string, MarketPrice>) => void,
+    intervalMs = 3000
+) {
+    // 1. Initial fetch
+    void getMarketPrices().then((initialPrices) => {
+        onUpdate({ ...initialPrices });
+    });
+
+    // 2. Periodic background refresh & micro-tick generator
+    let tickCount = 0;
+    const intervalId = setInterval(async () => {
+        tickCount++;
+
+        // Every 5 ticks (15s), re-fetch API for crypto updates
+        if (tickCount % 5 === 0) {
+            try {
+                const cryptoMap = await fetchBinanceCryptoPrices();
+                for (const asset of assets) {
+                    if (asset.category === "kripto" && cryptoMap.has(asset.symbol)) {
+                        const real = cryptoMap.get(asset.symbol)!;
+                        if (livePricesStore[asset.id]) {
+                            livePricesStore[asset.id].price = real.price;
+                            livePricesStore[asset.id].changePercent = real.changePercent;
+                            livePricesStore[asset.id].updatedAt = new Date();
+                        }
+                    }
+                }
+            } catch {
+                /* Ignore */
+            }
+        }
+
+        // Apply realistic tick micro-fluctuation to random assets so screen comes ALIVE!
+        for (const asset of assets) {
+            if (livePricesStore[asset.id]) {
+                const current = livePricesStore[asset.id];
+                // 30% chance for an asset price to tick each interval
+                if (Math.random() < 0.35) {
+                    const pctDelta = (Math.random() - 0.49) * 0.003; // +-0.15%
+                    const newPrice = Math.max(1, Math.round(current.price * (1 + pctDelta)));
+                    current.price = newPrice;
+                    current.changePercent = parseFloat((current.changePercent + (pctDelta * 100)).toFixed(2));
+                    current.updatedAt = new Date();
+                }
+            }
+        }
+
+        // Send a FRESH object copy so React detects state change and re-renders immediately!
+        onUpdate({ ...livePricesStore });
+    }, intervalMs);
+
+    return () => clearInterval(intervalId);
+}
+
+export function getHistory(assetId: string, currentPrice?: number): PriceHistoryPoint[] {
+    const asset = assets.find((item) => item.id === assetId) ?? assets[0];
+    const livePrice = currentPrice ?? livePricesStore[assetId]?.price ?? asset.basePrice;
+
+    const points: PriceHistoryPoint[] = [];
+    const now = Date.now();
+    const dayMs = 24 * 60 * 60 * 1000;
+
+    for (let i = 29; i >= 0; i--) {
+        const atDate = new Date(now - i * dayMs);
+        const label = atDate.toLocaleDateString("id-ID", {
+            day: "2-digit",
+            month: "short",
+        });
+
+        if (i === 0) {
+            // The final point is ALWAYS the exact live price
+            points.push({ label, value: livePrice, at: atDate });
+        } else {
+            // Calculate historical curve leading smoothly to the live price
+            const stepFactor = 1 - (i * 0.008) + (seeded(`${asset.id}:${i}`) - 0.5) * 0.04;
+            const val = Math.max(1, Math.round(livePrice * Math.max(0.7, stepFactor)));
+            points.push({ label, value: val, at: atDate });
+        }
+    }
+
+    return points;
+}
+
 export async function getWatchlist(uid?: string): Promise<Watchlist> {
     if (getDemoSession()) return { assetIds: demoState().watchlist };
     if (!uid) return { assetIds: [] };
@@ -102,6 +283,7 @@ export async function getWatchlist(uid?: string): Promise<Watchlist> {
         return { assetIds: [] };
     }
 }
+
 export function subscribeWatchlist(
     uid: string | undefined,
     onChange: (watchlist: Watchlist) => void,
@@ -120,6 +302,7 @@ export function subscribeWatchlist(
         onChange({ assetIds: (doc?.data()?.assetIds ?? []) as string[] });
     });
 }
+
 export async function toggleWatchlist(
     uid: string | undefined,
     assetId: string,
@@ -136,6 +319,7 @@ export async function toggleWatchlist(
     return (await httpsCallable(functions, "toggleWatchlist")({ assetId }))
         .data as Watchlist;
 }
+
 export async function trade(
     uid: string | undefined,
     asset: Asset,
@@ -198,6 +382,7 @@ export async function trade(
         "executeTrade",
     )({ assetId: asset.id, side, quantity });
 }
+
 export async function getTransactions(uid?: string): Promise<Transaction[]> {
     if (getDemoSession()) return demoState().transactions;
     if (!uid) return [];
@@ -210,6 +395,7 @@ export async function getTransactions(uid?: string): Promise<Transaction[]> {
         createdAt: row.data().createdAt?.toDate?.() ?? new Date(),
     })) as Transaction[];
 }
+
 export const defaultSettings: UserSettings = {
     marketAlerts: true,
     aiInsights: false,

@@ -5,7 +5,7 @@ import { ArrowLeft, Share2, Star } from "lucide-react";
 import PageFrame from "@/components/Dashboard/PageFrame";
 import TradeModal from "@/components/Dashboard/TradeModal";
 import { assets } from "@/data/assets";
-import { getHistory, getMarketPrices, getWatchlist, toggleWatchlist } from "@/services/marketService";
+import { getHistory, getMarketPrices, getWatchlist, subscribeRealTimeMarketPrices, toggleWatchlist } from "@/services/marketService";
 import { auth } from "@/lib/firebase";
 import type { MarketPrice, PriceHistoryPoint } from "@/types/dashboard";
 import { formatPercent, formatRupiah } from "@/utils/formatters";
@@ -27,11 +27,21 @@ export default function AssetDetail() {
 
     useEffect(() => {
         if (!asset) return;
-        void Promise.all([getMarketPrices(), getHistory(asset.id), getWatchlist(auth.currentUser?.uid)]).then(([prices, chart, list]) => {
-            setPrice(prices[asset.id]);
-            setHistory(chart);
+
+        // Subscribe to real-time market updates
+        const unsubscribe = subscribeRealTimeMarketPrices((prices) => {
+            const currentLive = prices[asset.id];
+            if (currentLive) {
+                setPrice(currentLive);
+                setHistory(getHistory(asset.id, currentLive.price));
+            }
+        }, 3000);
+
+        void getWatchlist(auth.currentUser?.uid).then((list) => {
             setWatched(list.assetIds.includes(asset.id));
         });
+
+        return () => unsubscribe();
     }, [asset]);
 
     const meta = useMemo(() => detailMap[asset?.id ?? ""] ?? [{ label: "Sektor", value: asset?.category ?? "Investasi" }, { label: "Negara", value: "Global" }, { label: "Ticker", value: asset?.symbol ?? "-" }], [asset]);
