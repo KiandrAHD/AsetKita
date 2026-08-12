@@ -27,6 +27,8 @@ export interface LocalAccount {
     balance: number;
 }
 
+import { getUserCloudBalance } from "@/services/walletService";
+
 export async function signIn(
     email: string,
     password: string,
@@ -39,16 +41,17 @@ export async function signIn(
             remember ? browserLocalPersistence : browserSessionPersistence,
         );
         const cred = await signInWithEmailAndPassword(auth, normalizedEmail, password);
+        const cloudBalance = await getUserCloudBalance(cred.user.uid, normalizedEmail);
         saveDemoSession({
             nickname: cred.user.displayName || normalizedEmail.split("@")[0],
             email: normalizedEmail,
-            initialBalance: 10000000,
-            balance: 10000000,
+            initialBalance: cloudBalance,
+            balance: cloudBalance,
             isDemo: false,
         });
         return cred;
-    } catch (firebaseErr) {
-        // Fallback: check local stored accounts
+    } catch (firebaseErr: any) {
+        // Fallback: check local stored accounts & auto-migrate to Cloud Firebase
         const localAccountsStr = localStorage.getItem("asetkita-local-accounts");
         if (localAccountsStr) {
             try {
@@ -57,17 +60,62 @@ export async function signIn(
                     (acc) => acc.email.toLowerCase() === normalizedEmail && acc.password === password
                 );
                 if (found) {
-                    const cleanBalance = found.balance ?? 10000000;
+                    let cloudUid = found.uid;
+                    let cloudBalance = found.balance ?? 10000000;
+
+                    // Automatically register / migrate local account to Firebase Auth & Firestore Cloud
+                    try {
+                        const { user } = await createUserWithEmailAndPassword(
+                            auth,
+                            normalizedEmail,
+                            password
+                        );
+                        cloudUid = user.uid;
+                        const now = serverTimestamp();
+                        await Promise.all([
+                            setDoc(doc(db, "users", user.uid), {
+                                uid: user.uid,
+                                namaLengkap: found.namaLengkap || found.namaPanggilan,
+                                namaPanggilan: found.namaPanggilan || "Investor",
+                                email: normalizedEmail,
+                                nomorHP: found.nomorHP || "",
+                                balance: cloudBalance,
+                                createdAt: now,
+                                updatedAt: now,
+                            }),
+                            setDoc(doc(db, "wallets", user.uid), {
+                                uid: user.uid,
+                                balance: cloudBalance,
+                                currency: "IDR",
+                                createdAt: now,
+                                updatedAt: now,
+                            }),
+                        ]);
+                    } catch (migrationErr: any) {
+                        if (migrationErr?.code === "auth/email-already-in-use") {
+                            try {
+                                const cred = await signInWithEmailAndPassword(auth, normalizedEmail, password);
+                                cloudUid = cred.user.uid;
+                                const walletSnap = await getDoc(doc(db, "wallets", cloudUid));
+                                if (walletSnap.exists() && typeof walletSnap.data()?.balance === "number") {
+                                    cloudBalance = Number(walletSnap.data().balance);
+                                }
+                            } catch {
+                                // ignore
+                            }
+                        }
+                    }
+
                     saveDemoSession({
                         nickname: found.namaPanggilan || found.namaLengkap,
                         email: found.email,
                         namaLengkap: found.namaLengkap,
                         nomorHP: found.nomorHP,
-                        initialBalance: cleanBalance,
-                        balance: cleanBalance,
+                        initialBalance: cloudBalance,
+                        balance: cloudBalance,
                         isDemo: false,
                     });
-                    return { user: { uid: found.uid, email: found.email } };
+                    return { user: { uid: cloudUid, email: found.email } };
                 }
             } catch {
                 // Ignore parse error

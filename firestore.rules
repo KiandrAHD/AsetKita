@@ -2,36 +2,8 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-      allow create: if request.auth != null;
-    }
-    match /wallets/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-      allow create: if request.auth != null;
-    }
-    match /portfolios/{portfolioId} {
-      allow read, write: if request.auth != null;
-      match /holdings/{holdingId} {
-        allow read, write: if request.auth != null;
-      }
-    }
-    match /transactions/{transactionId} {
-      allow read, write: if request.auth != null;
-    }
-    match /watchlists/{watchlistId} {
-      allow read, write: if request.auth != null;
-    }
-    match /settings/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
-    match /marketPrices/{assetId} {
-      allow read: if true;
-      allow write: if false;
-      match /history/{historyId} {
-        allow read: if true;
-        allow write: if false;
-      }
+    match /{document=**} {
+      allow read, write: if true;
     }
   }
 }
