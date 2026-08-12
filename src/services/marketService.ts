@@ -49,6 +49,95 @@ type RemotePrice = {
 
 // --- REAL-TIME FREE PUBLIC API FETCHERS ---
 
+// Fetch real-time crypto prices directly in IDR from Indodax (Indonesia's #1 Crypto Exchange API)
+async function fetchIndodaxCryptoPrices(): Promise<Map<string, { price: number; changePercent: number }>> {
+    const map = new Map<string, { price: number; changePercent: number }>();
+    try {
+        const res = await fetch("https://indodax.com/api/summaries", {
+            signal: AbortSignal.timeout(3500),
+        });
+        if (!res.ok) return map;
+        const data = await res.json();
+        if (data && data.tickers) {
+            const mapping: Record<string, string> = {
+                btc_idr: "BTC",
+                eth_idr: "ETH",
+                bnb_idr: "BNB",
+                sol_idr: "SOL",
+                xrp_idr: "XRP",
+                ada_idr: "ADA",
+                doge_idr: "DOGE",
+                dot_idr: "DOT",
+                link_idr: "LINK",
+                avax_idr: "AVAX",
+                shib_idr: "SHIB",
+                trx_idr: "TRX",
+                ltc_idr: "LTC",
+                bch_idr: "BCH",
+                matic_idr: "MATIC",
+            };
+            for (const [key, ticker] of Object.entries(data.tickers)) {
+                const symbol = mapping[key];
+                if (symbol && (ticker as any).last) {
+                    const price = parseFloat((ticker as any).last);
+                    const high = parseFloat((ticker as any).high || "0");
+                    const low = parseFloat((ticker as any).low || "0");
+                    const avg = (high + low) / 2 || price;
+                    const changePercent = parseFloat((((price - avg) / avg) * 100).toFixed(2));
+                    if (!isNaN(price) && price > 0) {
+                        map.set(symbol, { price: Math.round(price), changePercent });
+                    }
+                }
+            }
+        }
+    } catch {
+        /* Fallback silently */
+    }
+    return map;
+}
+
+// Fetch real-time crypto prices from CoinGecko Public API in IDR
+async function fetchCoinGeckoCryptoPrices(): Promise<Map<string, { price: number; changePercent: number }>> {
+    const map = new Map<string, { price: number; changePercent: number }>();
+    try {
+        const url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,binancecoin,solana,ripple,cardano,dogecoin,polkadot,chainlink,avalanche-2,shiba-inu,tron,litecoin,bitcoin-cash,matic-network&vs_currencies=idr&include_24hr_change=true";
+        const res = await fetch(url, { signal: AbortSignal.timeout(3500) });
+        if (!res.ok) return map;
+        const data = await res.json();
+        const mapping: Record<string, string> = {
+            bitcoin: "BTC",
+            ethereum: "ETH",
+            binancecoin: "BNB",
+            solana: "SOL",
+            ripple: "XRP",
+            cardano: "ADA",
+            dogecoin: "DOGE",
+            polkadot: "DOT",
+            chainlink: "LINK",
+            "avalanche-2": "AVAX",
+            "shiba-inu": "SHIB",
+            tron: "TRX",
+            litecoin: "LTC",
+            "bitcoin-cash": "BCH",
+            "matic-network": "MATIC",
+        };
+        for (const [cgId, val] of Object.entries(data)) {
+            const symbol = mapping[cgId];
+            if (symbol && (val as any).idr) {
+                const priceInIdr = (val as any).idr;
+                const changePercent = (val as any).idr_24h_change || 0;
+                map.set(symbol, {
+                    price: Math.round(priceInIdr),
+                    changePercent: parseFloat(changePercent.toFixed(2)),
+                });
+            }
+        }
+    } catch {
+        /* Fallback silently */
+    }
+    return map;
+}
+
 // Fetch real-time crypto prices from Binance (100% Free, CORS allowed)
 async function fetchBinanceCryptoPrices(): Promise<Map<string, { price: number; changePercent: number }>> {
     const map = new Map<string, { price: number; changePercent: number }>();
@@ -79,44 +168,14 @@ async function fetchBinanceCryptoPrices(): Promise<Map<string, { price: number; 
     return map;
 }
 
-// Fetch real-time prices from CoinGecko Public API as secondary crypto source
-async function fetchCoinGeckoCryptoPrices(): Promise<Map<string, { price: number; changePercent: number }>> {
-    const map = new Map<string, { price: number; changePercent: number }>();
-    try {
-        const url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,binancecoin,solana,ripple,cardano,dogecoin,polkadot,chainlink,avalanche-2,shiba-inu,tron,litecoin,bitcoin-cash,matic-network&vs_currencies=usd&include_24hr_change=true";
-        const res = await fetch(url, { signal: AbortSignal.timeout(3000) });
-        if (!res.ok) return map;
-        const data = await res.json();
-        const mapping: Record<string, string> = {
-            bitcoin: "BTC",
-            ethereum: "ETH",
-            binancecoin: "BNB",
-            solana: "SOL",
-            ripple: "XRP",
-            cardano: "ADA",
-            dogecoin: "DOGE",
-            polkadot: "DOT",
-            chainlink: "LINK",
-            "avalanche-2": "AVAX",
-            "shiba-inu": "SHIB",
-            tron: "TRX",
-            litecoin: "LTC",
-            "bitcoin-cash": "BCH",
-            "matic-network": "MATIC",
-        };
-        for (const [cgId, val] of Object.entries(data)) {
-            const symbol = mapping[cgId];
-            if (symbol && (val as any).usd) {
-                const priceInUsd = (val as any).usd;
-                const changePercent = (val as any).usd_24h_change || 0;
-                map.set(symbol, {
-                    price: Math.round(priceInUsd * USD_TO_IDR),
-                    changePercent: parseFloat(changePercent.toFixed(2)),
-                });
-            }
-        }
-    } catch {
-        /* Fallback silently */
+// Helper to fetch live crypto prices with multi-source fallback
+async function getLiveCryptoMap(): Promise<Map<string, { price: number; changePercent: number }>> {
+    let map = await fetchIndodaxCryptoPrices();
+    if (map.size === 0) {
+        map = await fetchCoinGeckoCryptoPrices();
+    }
+    if (map.size === 0) {
+        map = await fetchBinanceCryptoPrices();
     }
     return map;
 }
@@ -138,11 +197,8 @@ export async function getMarketPrices(): Promise<Record<string, MarketPrice>> {
         /* Firestore fallback */
     }
 
-    // Try API fetchers
-    let cryptoMap = await fetchBinanceCryptoPrices();
-    if (cryptoMap.size === 0) {
-        cryptoMap = await fetchCoinGeckoCryptoPrices();
-    }
+    // Fetch crypto map
+    const cryptoMap = await getLiveCryptoMap();
 
     for (const asset of assets) {
         const row = remote.get(asset.id);
@@ -201,7 +257,7 @@ export function subscribeRealTimeMarketPrices(
         // Every 5 ticks (15s), re-fetch API for crypto updates
         if (tickCount % 5 === 0) {
             try {
-                const cryptoMap = await fetchBinanceCryptoPrices();
+                const cryptoMap = await getLiveCryptoMap();
                 for (const asset of assets) {
                     if (asset.category === "kripto" && cryptoMap.has(asset.symbol)) {
                         const real = cryptoMap.get(asset.symbol)!;
