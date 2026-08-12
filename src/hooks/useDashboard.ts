@@ -1,17 +1,27 @@
 import { useCallback, useEffect, useState } from "react";
-import type { User } from "firebase/auth";
+import { onAuthStateChanged, type User } from "firebase/auth";
+import { auth } from "@/lib/firebase";
 import { getDashboardData } from "@/services/dashboardService";
 import type { DashboardData } from "@/types/dashboard";
 
-export function useDashboard(user: User | null) {
+export function useDashboard(_user?: User | null) {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [currentUser, setCurrentUser] = useState<User | null>(auth.currentUser);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setCurrentUser(u);
+    });
+    return () => unsub();
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      setData(await getDashboardData(user?.uid));
+      setData(await getDashboardData(currentUser?.uid ?? auth.currentUser?.uid));
     } catch {
       setError(
         "Data dashboard belum dapat dimuat. Periksa koneksi Anda dan coba lagi.",
@@ -19,10 +29,11 @@ export function useDashboard(user: User | null) {
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [currentUser]);
+
   useEffect(() => {
-    const timer = window.setTimeout(() => void load(), 0);
-    return () => window.clearTimeout(timer);
+    void load();
   }, [load]);
+
   return { data, loading, error, reload: load };
 }

@@ -50,6 +50,8 @@ export const completeRegistration = (payload: RegisterPayload, otp: string) =>
         (result) => result.data,
     );
 
+const DEFAULT_REGISTERED_BALANCE = 10000000; // Rp 10.000.000 modal awal akun resmi
+
 export async function completeRegistrationFlow(
     payload: RegisterPayload,
     otp: string,
@@ -69,7 +71,8 @@ export async function completeRegistrationFlow(
             email: normalizedEmail,
             namaLengkap: payload.namaLengkap.trim(),
             nomorHP: payload.nomorHP,
-            initialBalance: 0,
+            initialBalance: DEFAULT_REGISTERED_BALANCE,
+            balance: DEFAULT_REGISTERED_BALANCE,
             isDemo: false,
         });
         return res;
@@ -94,14 +97,14 @@ export async function completeRegistrationFlow(
                     status: "verified",
                     emailVerified: true,
                     provider: "password",
-                    balance: 0,
+                    balance: DEFAULT_REGISTERED_BALANCE,
                     createdAt: now,
                     updatedAt: now,
                     lastLogin: now,
                 }),
                 setDoc(doc(db, "wallets", user.uid), {
                     uid: user.uid,
-                    balance: 0,
+                    balance: DEFAULT_REGISTERED_BALANCE,
                     currency: "IDR",
                     createdAt: now,
                     updatedAt: now,
@@ -142,7 +145,8 @@ export async function completeRegistrationFlow(
                 email: normalizedEmail,
                 namaLengkap: payload.namaLengkap.trim(),
                 nomorHP: payload.nomorHP,
-                initialBalance: 0,
+                initialBalance: DEFAULT_REGISTERED_BALANCE,
+                balance: DEFAULT_REGISTERED_BALANCE,
                 isDemo: false,
             });
             return { customToken: "" };
@@ -174,7 +178,7 @@ export async function completeRegistrationFlow(
                 nomorHP: payload.nomorHP,
                 password: payload.password,
                 createdAt: new Date().toISOString(),
-                balance: 0,
+                balance: DEFAULT_REGISTERED_BALANCE,
             };
 
             accounts.push(newAccount);
@@ -186,7 +190,8 @@ export async function completeRegistrationFlow(
                 email: normalizedEmail,
                 namaLengkap: newAccount.namaLengkap,
                 nomorHP: newAccount.nomorHP,
-                initialBalance: 0,
+                initialBalance: DEFAULT_REGISTERED_BALANCE,
+                balance: DEFAULT_REGISTERED_BALANCE,
                 isDemo: false,
             });
 
