@@ -18,49 +18,56 @@ export async function topUpBalance(amount: number, method: string = "QRIS") {
         return { success: true, balance: newBalance };
     }
 
-    // 2. Firebase Cloud member account
+    // 2. Member account on Cloud Firebase
     if (uid) {
+        const walletRef = doc(db, "wallets", uid);
+        const userRef = doc(db, "users", uid);
+        const walletSnap = await getDoc(walletRef);
+
+        const currentBalance = Number(walletSnap.data()?.balance ?? session?.balance ?? 10000000);
+        const newBalance = currentBalance + amount;
+
+        await setDoc(
+            walletRef,
+            {
+                uid,
+                balance: newBalance,
+                currency: "IDR",
+                updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+        );
+
+        await setDoc(
+            userRef,
+            {
+                balance: newBalance,
+                updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+        );
+
         try {
-            const walletRef = doc(db, "wallets", uid);
-            const walletSnap = await getDoc(walletRef);
-            const currentBalance = Number(walletSnap.data()?.balance ?? 10000000);
-            const newBalance = currentBalance + amount;
-
-            await setDoc(
-                walletRef,
-                {
-                    uid,
-                    balance: newBalance,
-                    currency: "IDR",
-                    updatedAt: serverTimestamp(),
-                },
-                { merge: true }
-            );
-
-            try {
-                await addDoc(collection(db, "transactions"), {
-                    uid,
-                    symbol: "TOPUP",
-                    name: `Top Up Saldo (${method})`,
-                    side: "buy",
-                    quantity: 1,
-                    price: amount,
-                    total: amount,
-                    status: "completed",
-                    createdAt: serverTimestamp(),
-                });
-            } catch {
-                // transaction logging optional
-            }
-
-            if (session) {
-                saveDemoSession({ ...session, balance: newBalance });
-            }
-
-            return { success: true, balance: newBalance };
-        } catch (err) {
-            console.warn("Firestore topup fallback to local session", err);
+            await addDoc(collection(db, "transactions"), {
+                uid,
+                symbol: "TOPUP",
+                name: `Top Up Saldo (${method})`,
+                side: "buy",
+                quantity: 1,
+                price: amount,
+                total: amount,
+                status: "completed",
+                createdAt: serverTimestamp(),
+            });
+        } catch (e) {
+            console.warn("Transaction log error:", e);
         }
+
+        if (session) {
+            saveDemoSession({ ...session, balance: newBalance, initialBalance: newBalance });
+        }
+
+        return { success: true, balance: newBalance };
     }
 
     // 3. Registered local fallback account
