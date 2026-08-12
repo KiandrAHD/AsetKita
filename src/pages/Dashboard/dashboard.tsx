@@ -45,7 +45,7 @@ function Dashboard() {
         <>
             <Header profile={data.profile} onMenu={openMobileMenu} />
             <div className="mx-auto max-w-7xl space-y-5 p-4 sm:space-y-6 sm:p-6">
-                <SummaryCards summary={data.summary} />
+                <SummaryCards summary={data.summary} onTopUpSuccess={() => void reload()} />
                 <div className="grid gap-5 xl:grid-cols-[minmax(0,1.75fr)_minmax(280px,.75fr)]">
                     <PortfolioChart data={data.chart} />
                     <AssetAllocation data={data.allocation} />

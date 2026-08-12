@@ -14,14 +14,12 @@ export const clearDemoSession = () => sessionStorage.removeItem(key);
 export function demoState() {
     const session = getDemoSession();
     const isDemo = session?.isDemo ?? true;
-    let balance = session?.balance ?? session?.initialBalance ?? 0;
+    let balance = session?.balance ?? session?.initialBalance ?? (isDemo ? 1000000 : 10000000);
 
-    // Preserve demo simulation balances (isDemo === true).
-    // For real registered accounts (isDemo === false), reset legacy 1M initial balance to 0.
-    if (!isDemo && (balance === 1000000 || session?.initialBalance === 1000000)) {
-        balance = 0;
+    if (!isDemo && (balance === 0 || balance === 1000000)) {
+        balance = 10000000;
         if (session) {
-            saveDemoSession({ ...session, initialBalance: 0, balance: 0 });
+            saveDemoSession({ ...session, initialBalance: 10000000, balance: 10000000 });
         }
     }
 

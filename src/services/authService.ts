@@ -38,7 +38,15 @@ export async function signIn(
             auth,
             remember ? browserLocalPersistence : browserSessionPersistence,
         );
-        return await signInWithEmailAndPassword(auth, normalizedEmail, password);
+        const cred = await signInWithEmailAndPassword(auth, normalizedEmail, password);
+        saveDemoSession({
+            nickname: cred.user.displayName || normalizedEmail.split("@")[0],
+            email: normalizedEmail,
+            initialBalance: 10000000,
+            balance: 10000000,
+            isDemo: false,
+        });
+        return cred;
     } catch (firebaseErr) {
         // Fallback: check local stored accounts
         const localAccountsStr = localStorage.getItem("asetkita-local-accounts");
@@ -49,7 +57,7 @@ export async function signIn(
                     (acc) => acc.email.toLowerCase() === normalizedEmail && acc.password === password
                 );
                 if (found) {
-                    const cleanBalance = found.balance === 1000000 ? 0 : (found.balance ?? 0);
+                    const cleanBalance = found.balance ?? 10000000;
                     saveDemoSession({
                         nickname: found.namaPanggilan || found.namaLengkap,
                         email: found.email,
