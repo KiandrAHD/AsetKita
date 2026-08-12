@@ -10,7 +10,9 @@ import {
 import { auth, db } from "@/lib/firebase";
 import { demoState, getDemoSession } from "@/services/demoService";
 import { getMarketPrices } from "@/services/marketService";
+import { getUserCloudBalance } from "@/services/walletService";
 import type { Allocation, DashboardData, Holding } from "@/types/dashboard";
+
 const months = [
     "Jan",
     "Feb",
@@ -25,6 +27,7 @@ const months = [
     "Nov",
     "Des",
 ];
+
 const enrich = (
     holdings: Holding[],
     prices: Record<string, { price: number; changePercent: number }>,
@@ -34,9 +37,11 @@ const enrich = (
         price: prices[item.assetId ?? item.id]?.price ?? item.price,
         changePercent: prices[item.assetId ?? item.id]?.changePercent ?? 0,
     }));
+
 export async function getDashboardData(uid?: string): Promise<DashboardData> {
     const prices = await getMarketPrices();
     const session = getDemoSession();
+
     if (session?.isDemo) {
         const state = demoState();
         const holdings = enrich(state.holdings, prices);
@@ -89,21 +94,23 @@ export async function getDashboardData(uid?: string): Promise<DashboardData> {
                 : [],
         };
     }
+
     if (!uid) {
-        const balance = session?.balance ?? 10000000;
+        const email = session?.email ?? auth.currentUser?.email ?? undefined;
+        const cloudBalance = await getUserCloudBalance(null, email);
         return {
             mode: "member",
             profile: {
                 uid: "member",
                 name: session?.nickname ?? auth.currentUser?.displayName ?? "Investor",
-                email: session?.email ?? auth.currentUser?.email ?? undefined,
+                email,
                 phone: session?.nomorHP,
                 financialScore: 85,
             },
             summary: {
-                balance,
+                balance: cloudBalance,
                 totalAssets: 0,
-                portfolioValue: balance,
+                portfolioValue: cloudBalance,
                 financialScore: 85,
             },
             holdings: [],
@@ -111,9 +118,9 @@ export async function getDashboardData(uid?: string): Promise<DashboardData> {
             chart: [],
         };
     }
+
     try {
         const user = await getDoc(doc(db, "users", uid));
-        const wallet = await getDoc(doc(db, "wallets", uid));
         let holdings: Holding[] = [];
         try {
             const portfolios = await getDocs(
@@ -149,7 +156,13 @@ export async function getDashboardData(uid?: string): Promise<DashboardData> {
             0,
         );
         const profile = user.data() ?? {};
-        const balance = Number(wallet.data()?.balance ?? session?.balance ?? 10000000);
+        const email = (profile.email as string | undefined) ?? session?.email ?? auth.currentUser?.email;
+        const balance = await getUserCloudBalance(uid, email);
+
+        if (session) {
+            saveDemoSession({ ...session, balance, initialBalance: balance });
+        }
+
         const name = String(profile.namaPanggilan ?? session?.nickname ?? auth.currentUser?.displayName ?? "Investor");
 
         return {
@@ -185,13 +198,14 @@ export async function getDashboardData(uid?: string): Promise<DashboardData> {
                 : [],
         };
     } catch {
-        const balance = session?.balance ?? 10000000;
+        const email = session?.email ?? auth.currentUser?.email ?? undefined;
+        const balance = await getUserCloudBalance(uid, email);
         return {
             mode: "member",
             profile: {
                 uid: uid ?? "member",
                 name: session?.nickname ?? auth.currentUser?.displayName ?? "Investor",
-                email: session?.email ?? auth.currentUser?.email ?? undefined,
+                email,
                 phone: session?.nomorHP,
                 financialScore: 85,
             },
@@ -207,6 +221,7 @@ export async function getDashboardData(uid?: string): Promise<DashboardData> {
         };
     }
 }
+
 export async function getMarketSummary() {
     const prices = await getMarketPrices();
     return Object.values(prices)
@@ -218,6 +233,7 @@ export async function getMarketSummary() {
             changePercent: item.changePercent,
         }));
 }
+
 export async function getLatestNews() {
     return [];
 }
