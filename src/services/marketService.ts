@@ -22,7 +22,7 @@ import type {
     Watchlist,
 } from "@/types/dashboard";
 
-const USD_TO_IDR = 16000;
+const USD_TO_IDR = 16300;
 
 // Dynamic In-Memory Store for Live Real-Time Ticker
 const livePricesStore: Record<string, MarketPrice> = {};
@@ -36,10 +36,7 @@ const seeded = (text: string) => {
 const volatility = (asset: Asset) =>
     asset.category === "kripto" ? 0.05 : asset.category === "saham" ? 0.02 : 0.01;
 const simulated = (asset: Asset, at = bucket()) => {
-    let factor = 0.8;
-    for (let i = 0; i <= Math.min(60, at % 365); i += 1)
-        factor *=
-            1 + (seeded(`${asset.id}:${at - i}`) - 0.5) * 2 * volatility(asset);
+    let factor = 0.95 + (seeded(`${asset.id}:${at}`) - 0.5) * 2 * volatility(asset);
     return Math.max(1, Math.round(asset.basePrice * factor));
 };
 
@@ -226,7 +223,7 @@ export function subscribeRealTimeMarketPrices(
                 const current = livePricesStore[asset.id];
                 // 30% chance for an asset price to tick each interval
                 if (Math.random() < 0.35) {
-                    const pctDelta = (Math.random() - 0.49) * 0.003; // +-0.15%
+                    const pctDelta = (Math.random() - 0.49) * 0.002; // +-0.1% micro fluctuation
                     const newPrice = Math.max(1, Math.round(current.price * (1 + pctDelta)));
                     current.price = newPrice;
                     current.changePercent = parseFloat((current.changePercent + (pctDelta * 100)).toFixed(2));
@@ -250,22 +247,41 @@ export function getHistory(assetId: string, currentPrice?: number): PriceHistory
     const now = Date.now();
     const dayMs = 24 * 60 * 60 * 1000;
 
+    // Determine category volatility factor
+    const vol = asset.category === "kripto" ? 0.035 : asset.category === "saham" ? 0.018 : 0.012;
+
+    const rawValues: number[] = new Array(30);
+    rawValues[29] = livePrice; // Today's price (index 29) is exact live price
+
+    // Walk backward from day 28 down to 0
+    for (let i = 28; i >= 0; i--) {
+        const offsetFromToday = 29 - i;
+        const seed1 = seeded(`${asset.id}:h1:${offsetFromToday}`);
+        
+        // Multi-frequency wave pattern creates natural market cycles (bull & bear swings)
+        const wave = Math.sin(offsetFromToday * 0.45) * vol * 0.9 + Math.cos(offsetFromToday * 0.22) * vol * 0.6;
+        const noise = (seed1 - 0.495) * (vol * 2.2);
+        const changeRate = wave + noise;
+        
+        // Calculate previous day's price relative to the next day's price
+        const prevVal = rawValues[i + 1] / (1 + changeRate);
+        rawValues[i] = Math.max(1, Math.round(prevVal));
+    }
+
+    // Build timeline points array from day -29 to day 0
     for (let i = 29; i >= 0; i--) {
+        const idx = 29 - i;
         const atDate = new Date(now - i * dayMs);
         const label = atDate.toLocaleDateString("id-ID", {
             day: "2-digit",
             month: "short",
         });
 
-        if (i === 0) {
-            // The final point is ALWAYS the exact live price
-            points.push({ label, value: livePrice, at: atDate });
-        } else {
-            // Calculate historical curve leading smoothly to the live price
-            const stepFactor = 1 - (i * 0.008) + (seeded(`${asset.id}:${i}`) - 0.5) * 0.04;
-            const val = Math.max(1, Math.round(livePrice * Math.max(0.7, stepFactor)));
-            points.push({ label, value: val, at: atDate });
-        }
+        points.push({
+            label,
+            value: rawValues[idx],
+            at: atDate,
+        });
     }
 
     return points;

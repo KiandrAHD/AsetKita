@@ -7,7 +7,7 @@ import {
     query,
     where,
 } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
 import { demoState, getDemoSession } from "@/services/demoService";
 import { getMarketPrices } from "@/services/marketService";
 import type { Allocation, DashboardData, Holding } from "@/types/dashboard";
@@ -40,11 +40,14 @@ export async function getDashboardData(uid?: string): Promise<DashboardData> {
     if (session?.isDemo) {
         const state = demoState();
         const holdings = enrich(state.holdings, prices);
+        const total = holdings.reduce(
+            (sum, item) => sum + item.quantity * item.price,
+            0,
+        );
         const totalAssets = holdings.reduce(
             (sum, item) => sum + item.quantity * item.price,
             0,
         );
-        const total = state.balance + totalAssets;
         const allocation: Allocation[] = holdings.map((item) => ({
             name: item.symbol,
             value: total
@@ -62,7 +65,7 @@ export async function getDashboardData(uid?: string): Promise<DashboardData> {
                 color: "#64748b",
             });
         return {
-            mode: session?.isDemo === false ? "member" : "demo",
+            mode: "demo",
             profile: {
                 uid: session?.email ? `user_${session.email}` : "demo",
                 name: session?.nickname ?? "Investor Demo",
@@ -84,6 +87,28 @@ export async function getDashboardData(uid?: string): Promise<DashboardData> {
                     value: Math.round(total * (0.9 + i * 0.01)),
                 }))
                 : [],
+        };
+    }
+    if (!uid) {
+        const balance = session?.balance ?? 10000000;
+        return {
+            mode: "member",
+            profile: {
+                uid: "member",
+                name: session?.nickname ?? auth.currentUser?.displayName ?? "Investor",
+                email: session?.email ?? auth.currentUser?.email ?? undefined,
+                phone: session?.nomorHP,
+                financialScore: 85,
+            },
+            summary: {
+                balance,
+                totalAssets: 0,
+                portfolioValue: balance,
+                financialScore: 85,
+            },
+            holdings: [],
+            allocation: [],
+            chart: [],
         };
     }
     try {
@@ -124,7 +149,6 @@ export async function getDashboardData(uid?: string): Promise<DashboardData> {
             0,
         );
         const profile = user.data() ?? {};
-        const session = getDemoSession();
         const balance = Number(wallet.data()?.balance ?? session?.balance ?? 10000000);
         const name = String(profile.namaPanggilan ?? session?.nickname ?? auth.currentUser?.displayName ?? "Investor");
 
@@ -133,8 +157,8 @@ export async function getDashboardData(uid?: string): Promise<DashboardData> {
             profile: {
                 uid,
                 name,
-                email: profile.email as string | undefined ?? session?.email ?? auth.currentUser?.email ?? undefined,
-                phone: profile.nomorHP as string | undefined ?? session?.nomorHP ?? undefined,
+                email: (profile.email as string | undefined) ?? session?.email ?? auth.currentUser?.email ?? undefined,
+                phone: (profile.nomorHP as string | undefined) ?? session?.nomorHP ?? undefined,
                 joinedAt: profile.createdAt?.toDate?.(),
                 lastLogin: profile.lastLogin?.toDate?.(),
                 financialScore: Number(profile.financialScore ?? 85),
@@ -161,7 +185,6 @@ export async function getDashboardData(uid?: string): Promise<DashboardData> {
                 : [],
         };
     } catch {
-        const session = getDemoSession();
         const balance = session?.balance ?? 10000000;
         return {
             mode: "member",
