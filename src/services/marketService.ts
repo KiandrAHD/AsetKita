@@ -288,7 +288,7 @@ export function getHistory(assetId: string, currentPrice?: number): PriceHistory
 }
 
 export async function getWatchlist(uid?: string): Promise<Watchlist> {
-    if (getDemoSession()) return { assetIds: demoState().watchlist };
+    if (getDemoSession()?.isDemo) return { assetIds: demoState().watchlist };
     if (!uid) return { assetIds: [] };
     try {
         const snap = await getDocs(
@@ -304,7 +304,7 @@ export function subscribeWatchlist(
     uid: string | undefined,
     onChange: (watchlist: Watchlist) => void,
 ) {
-    if (getDemoSession()) {
+    if (getDemoSession()?.isDemo) {
         onChange({ assetIds: demoState().watchlist });
         return () => undefined;
     }
@@ -323,7 +323,7 @@ export async function toggleWatchlist(
     uid: string | undefined,
     assetId: string,
 ): Promise<Watchlist> {
-    if (getDemoSession()) {
+    if (getDemoSession()?.isDemo) {
         const state = demoState();
         const assetIds = state.watchlist.includes(assetId)
             ? state.watchlist.filter((id) => id !== assetId)
@@ -344,7 +344,7 @@ export async function trade(
     price: number,
 ) {
     if (quantity <= 0) throw new Error("Jumlah harus lebih besar dari nol.");
-    if (getDemoSession()) {
+    if (getDemoSession()?.isDemo) {
         const state = demoState();
         const current = state.holdings.find(
             (holding) => holding.assetId === asset.id,
@@ -400,7 +400,7 @@ export async function trade(
 }
 
 export async function getTransactions(uid?: string): Promise<Transaction[]> {
-    if (getDemoSession()) return demoState().transactions;
+    if (getDemoSession()?.isDemo) return demoState().transactions;
     if (!uid) return [];
     const snap = await getDocs(
         query(collection(db, "transactions"), where("uid", "==", uid)),
