@@ -20,7 +20,7 @@ export default function Portfolio() {
                         {[
                             ["Nilai Portofolio", data.summary.portfolioValue],
                             ["Saldo", data.summary.balance],
-                            ["Nilai Investasi", data.summary.totalAssets],
+                            ["Total Aset", data.summary.totalAssets],
                         ].map(([label, value]) => (
                             <div
                                 key={String(label)}

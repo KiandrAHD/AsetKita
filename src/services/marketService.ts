@@ -4,6 +4,9 @@ import {
     onSnapshot,
     query,
     where,
+    runTransaction,
+    doc,
+    serverTimestamp,
 } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { db, functions } from "@/lib/firebase";
@@ -393,10 +396,92 @@ export async function trade(
         return;
     }
     if (!uid) throw new Error("Sesi tidak ditemukan.");
-    await httpsCallable(
-        functions,
-        "executeTrade",
-    )({ assetId: asset.id, side, quantity });
+    
+    const portfolioId = `${uid}_utama`;
+    const walletRef = doc(db, "wallets", uid);
+    const userRef = doc(db, "users", uid);
+    const holdingRef = doc(db, "portfolios", portfolioId, "holdings", asset.id);
+    const transactionRef = doc(collection(db, "transactions"));
+    const priceRef = doc(db, "marketPrices", asset.id);
+
+    await runTransaction(db, async (tx) => {
+        const [priceSnap, walletSnap, holdingSnap] = await Promise.all([
+            tx.get(priceRef),
+            tx.get(walletRef),
+            tx.get(holdingRef),
+        ]);
+
+        let currentPrice = Number(priceSnap.data()?.price);
+        if (!Number.isFinite(currentPrice) || currentPrice <= 0) {
+            currentPrice = price || asset.basePrice;
+        }
+
+        const total = currentPrice * quantity;
+        const balance = Number(walletSnap.data()?.balance ?? 0);
+        const oldQuantity = Number(holdingSnap.data()?.quantity ?? 0);
+
+        if (side === "buy") {
+            if (balance < total) throw new Error("Saldo tidak mencukupi.");
+            const averageBuy = ((Number(holdingSnap.data()?.averageBuy ?? 0) * oldQuantity) + total) / (oldQuantity + quantity);
+            
+            tx.set(walletRef, { 
+                uid, 
+                balance: balance - total, 
+                updatedAt: serverTimestamp() 
+            }, { merge: true });
+
+            tx.set(userRef, { 
+                balance: balance - total, 
+                updatedAt: serverTimestamp() 
+            }, { merge: true });
+            
+            tx.set(holdingRef, { 
+                assetId: asset.id, 
+                symbol: asset.symbol, 
+                name: asset.name, 
+                quantity: oldQuantity + quantity, 
+                averageBuy, 
+                currentPrice, 
+                updatedAt: serverTimestamp() 
+            }, { merge: true });
+        } else {
+            if (oldQuantity < quantity) throw new Error("Jumlah aset tidak mencukupi.");
+            
+            tx.set(walletRef, { 
+                uid, 
+                balance: balance + total, 
+                updatedAt: serverTimestamp() 
+            }, { merge: true });
+
+            tx.set(userRef, { 
+                balance: balance + total, 
+                updatedAt: serverTimestamp() 
+            }, { merge: true });
+            
+            if (oldQuantity === quantity) {
+                tx.delete(holdingRef);
+            } else {
+                tx.update(holdingRef, { 
+                    quantity: oldQuantity - quantity, 
+                    currentPrice, 
+                    updatedAt: serverTimestamp() 
+                });
+            }
+        }
+
+        tx.set(transactionRef, { 
+            uid, 
+            assetId: asset.id, 
+            symbol: asset.symbol, 
+            name: asset.name, 
+            side, 
+            quantity, 
+            price: currentPrice, 
+            total, 
+            status: "completed", 
+            createdAt: serverTimestamp() 
+        });
+    });
 }
 
 export async function getTransactions(uid?: string): Promise<Transaction[]> {
