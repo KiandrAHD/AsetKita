@@ -80,7 +80,7 @@ export async function getDashboardData(uid?: string): Promise<DashboardData> {
             },
             summary: {
                 balance: state.balance,
-                totalAssets,
+                totalAssets: state.balance + totalAssets,
                 portfolioValue: total,
                 financialScore: 0,
             },
@@ -118,18 +118,19 @@ export async function getDashboardData(uid?: string): Promise<DashboardData> {
             chart: [],
         };
     }
-
     try {
-        const user = await getDoc(doc(db, "users", uid));
+        let profile: any = {};
+        try {
+            const user = await getDoc(doc(db, "users", uid));
+            if (user.exists()) {
+                profile = user.data() ?? {};
+            }
+        } catch (err) {
+            console.warn("Failed to load user profile document:", err);
+        }
         let holdings: Holding[] = [];
         try {
-            const portfolios = await getDocs(
-                query(collection(db, "portfolios"), where("uid", "==", uid), limit(1)),
-            );
-            const portfolio = portfolios.docs[0];
-            const rows = portfolio
-                ? await getDocs(collection(db, "portfolios", portfolio.id, "holdings"))
-                : { docs: [] };
+            const rows = await getDocs(collection(db, "portfolios", `${uid}_utama`, "holdings"));
             holdings = enrich(
                 rows.docs.map((row, index) => {
                     const d = row.data();
@@ -155,7 +156,6 @@ export async function getDashboardData(uid?: string): Promise<DashboardData> {
             (sum, item) => sum + item.quantity * item.price,
             0,
         );
-        const profile = user.data() ?? {};
         const email = (profile.email as string | undefined) ?? session?.email ?? auth.currentUser?.email;
         const balance = await getUserCloudBalance(uid, email);
 
@@ -165,6 +165,25 @@ export async function getDashboardData(uid?: string): Promise<DashboardData> {
 
         const name = String(profile.namaPanggilan ?? session?.nickname ?? auth.currentUser?.displayName ?? "Investor");
 
+        const allocation: Allocation[] = holdings.map((h) => ({
+            name: h.symbol,
+            value: totalAssets
+                ? Math.round(((h.quantity * h.price) / totalAssets) * 100)
+                : 0,
+            color: h.color,
+        }));
+
+        if (balance) {
+            allocation.push({
+                name: "Saldo",
+                value: Math.max(
+                    0,
+                    100 - allocation.reduce((sum, item) => sum + item.value, 0),
+                ),
+                color: "#64748b",
+            });
+        }
+
         return {
             mode: "member",
             profile: {
@@ -172,28 +191,22 @@ export async function getDashboardData(uid?: string): Promise<DashboardData> {
                 name,
                 email: (profile.email as string | undefined) ?? session?.email ?? auth.currentUser?.email ?? undefined,
                 phone: (profile.nomorHP as string | undefined) ?? session?.nomorHP ?? undefined,
-                joinedAt: profile.createdAt?.toDate?.(),
-                lastLogin: profile.lastLogin?.toDate?.(),
+                joinedAt: typeof profile.createdAt?.toDate === "function" ? profile.createdAt.toDate() : (profile.createdAt instanceof Date ? profile.createdAt : undefined),
+                lastLogin: typeof profile.lastLogin?.toDate === "function" ? profile.lastLogin.toDate() : (profile.lastLogin instanceof Date ? profile.lastLogin : undefined),
                 financialScore: Number(profile.financialScore ?? 85),
             },
             summary: {
                 balance,
-                totalAssets,
-                portfolioValue: balance + totalAssets,
+                totalAssets: balance + totalAssets,
+                portfolioValue: totalAssets,
                 financialScore: Number(profile.financialScore ?? 85),
             },
             holdings,
-            allocation: holdings.map((h) => ({
-                name: h.symbol,
-                value: totalAssets
-                    ? Math.round(((h.quantity * h.price) / totalAssets) * 100)
-                    : 0,
-                color: h.color,
-            })),
+            allocation,
             chart: holdings.length
                 ? months.map((label, i) => ({
                     label,
-                    value: Math.round((balance + totalAssets) * (0.9 + i * 0.01)),
+                    value: Math.round(totalAssets * (0.9 + i * 0.01)),
                 }))
                 : [],
         };
@@ -211,8 +224,8 @@ export async function getDashboardData(uid?: string): Promise<DashboardData> {
             },
             summary: {
                 balance,
-                totalAssets: 0,
-                portfolioValue: balance,
+                totalAssets: balance,
+                portfolioValue: 0,
                 financialScore: 85,
             },
             holdings: [],
