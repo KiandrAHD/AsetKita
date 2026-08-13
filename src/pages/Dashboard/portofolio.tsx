@@ -1,23 +1,18 @@
-import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import PageFrame from "@/components/Dashboard/PageFrame";
 import { auth } from "@/lib/firebase";
-import { getDashboardData } from "@/services/dashboardService";
+import { useDashboard } from "@/hooks/useDashboard";
 import { PortfolioChart } from "@/components/Dashboard/Charts";
 import { EmptyState, LoadingState } from "@/components/Dashboard/State";
 import { formatPercent, formatRupiah } from "@/utils/formatters";
-import type { DashboardData } from "@/types/dashboard";
 export default function Portfolio() {
-    const [data, setData] = useState<DashboardData>();
-    useEffect(() => {
-        void getDashboardData(auth.currentUser?.uid).then(setData);
-    }, []);
+    const { data, loading } = useDashboard(auth.currentUser);
     return (
         <PageFrame
             title="Portofolio"
             description="Nilai investasi dan performa aset Anda."
         >
-            {!data ? (
+            {loading || !data ? (
                 <LoadingState />
             ) : (
                 <>

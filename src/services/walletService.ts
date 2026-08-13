@@ -80,19 +80,32 @@ export async function topUpBalance(amount: number, method: string = "QRIS") {
     const currentBalance = await getUserCloudBalance(currentUid, cleanEmail);
     const newBalance = currentBalance + amount;
 
-    // Collect all document IDs to sync in Cloud Firestore
-    const idsToSync = Array.from(new Set([currentUid, sanitizedEmail].filter(Boolean))) as string[];
+    // Collect all document IDs to sync in Cloud Firestore. If authenticated, only sync to UID.
+    const idsToSync = currentUid ? [currentUid] : (sanitizedEmail ? [sanitizedEmail] : []);
+
+    let firestoreWritten = false;
+    let lastError: any = null;
 
     for (const id of idsToSync) {
         try {
             await setDoc(
                 doc(db, "wallets", id),
-                { uid: id, balance: newBalance, currency: "IDR", updatedAt: serverTimestamp() },
+                { 
+                    uid: id, 
+                    balance: newBalance, 
+                    currency: "IDR", 
+                    email: cleanEmail,
+                    updatedAt: serverTimestamp() 
+                },
                 { merge: true }
             );
             await setDoc(
                 doc(db, "users", id),
-                { balance: newBalance, updatedAt: serverTimestamp() },
+                { 
+                    balance: newBalance, 
+                    email: cleanEmail,
+                    updatedAt: serverTimestamp() 
+                },
                 { merge: true }
             );
             try {
@@ -108,9 +121,15 @@ export async function topUpBalance(amount: number, method: string = "QRIS") {
                     createdAt: serverTimestamp(),
                 });
             } catch {}
+            firestoreWritten = true;
         } catch (e) {
             console.warn(`Write to Firestore failed for id ${id}`, e);
+            lastError = e;
         }
+    }
+
+    if (idsToSync.length > 0 && !firestoreWritten && lastError) {
+        throw new Error(`Gagal menyimpan transaksi ke server: ${lastError.message || lastError}`);
     }
 
     // Always update session and local storage
