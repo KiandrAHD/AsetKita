@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { Outlet } from "react-router-dom";
 import Sidebar from "@/components/Dashboard/Sidebar";
+import AIChatbot from "@/components/Dashboard/AIChatbot";
 
 function DashboardLayout() {
     const [collapsed, setCollapsed] = useState(false);
     const [mobileOpen, setMobileOpen] = useState(false);
     return (
-        <div className="min-h-screen bg-[#060b14] text-slate-100">
+        <div className="min-h-screen bg-[#060b14] text-slate-100 relative">
             <div className="fixed inset-y-0 left-0 z-30 hidden lg:block">
                 <Sidebar
                     collapsed={collapsed}
@@ -30,6 +31,9 @@ function DashboardLayout() {
             >
                 <Outlet context={{ openMobileMenu: () => setMobileOpen(true) }} />
             </main>
+            
+            {/* Floating AI Investment Assistant */}
+            <AIChatbot mode="floating" />
         </div>
     );
 }
