@@ -23,8 +23,7 @@ import Watchlist from "@/pages/Dashboard/watchlist";
 import AddFavorite from "@/pages/Dashboard/addFavorite";
 import Transactions from "@/pages/Dashboard/transactions";
 import AssetDetail from "@/pages/Dashboard/assetDetail";
-
-const AI = () => <PlaceholderPage title="AI & Belajar" />;
+import AI from "@/pages/Dashboard/ai";
 
 export default function AppRouter() {
     return (
