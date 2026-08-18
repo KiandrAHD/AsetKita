@@ -16,10 +16,10 @@ export default function Header({
                 <div>
                     <p className="text-sm text-cyan-200">{greeting()} ✦</p>
                     <h1 className="text-xl font-semibold text-white sm:text-2xl">
-                        {profile.name}
+                        {profile?.name ?? "Investor"}
                     </h1>
                     <p className="mt-1 text-xs text-slate-400">
-                        Login terakhir: {formatLastLogin(profile.lastLogin)}
+                        Login terakhir: {formatLastLogin(profile?.lastLogin)}
                     </p>
                 </div>
             </div>
@@ -33,7 +33,7 @@ export default function Header({
                 </label>
                 <NotificationLink />
                 <span className="flex h-9 w-9 items-center justify-center rounded-full bg-cyan-400/15 text-sm font-bold text-cyan-300">
-                    {profile.name.slice(0, 1).toUpperCase()}
+                    {(profile?.name ?? "Investor").slice(0, 1).toUpperCase()}
                 </span>
             </div>
         </header>

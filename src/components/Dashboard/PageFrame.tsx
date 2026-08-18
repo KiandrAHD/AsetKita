@@ -13,7 +13,8 @@ export default function PageFrame({
     description: string;
     children: React.ReactNode;
 }) {
-    const { openMobileMenu } = useOutletContext<{ openMobileMenu: () => void }>();
+    const context = useOutletContext<{ openMobileMenu: () => void }>();
+    const openMobileMenu = context?.openMobileMenu ?? (() => undefined);
     const { data } = useDashboard(auth.currentUser);
     const demoSession = getDemoSession();
     const profile = data?.profile ?? {
