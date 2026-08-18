@@ -8,7 +8,7 @@ import {
     signInWithEmailAndPassword,
     signOut,
 } from "firebase/auth";
-import { doc, serverTimestamp, setDoc } from "firebase/firestore";
+import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 
 const TESTER_EMAIL = "tester@gmail.com";
