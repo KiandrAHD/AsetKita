@@ -18,7 +18,7 @@ import {
 
 import { assets } from "@/data/assets";
 import { getMarketPrices } from "@/services/marketService";
-import { ChatContext, ChatMessage, getAIChatResponse } from "@/services/aiService";
+import { type ChatContext, type ChatMessage, getAIChatResponse } from "@/services/aiService";
 
 interface AIChatbotProps {
     mode?: "floating" | "fullPage";
@@ -347,11 +347,10 @@ export default function AIChatbot({ mode = "floating" }: AIChatbotProps) {
                                 className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                             >
                                 <div
-                                    className={`max-w-[85%] rounded-2xl px-4 py-3 ${
-                                        msg.role === "user"
+                                    className={`max-w-[85%] rounded-2xl px-4 py-3 ${msg.role === "user"
                                             ? "bg-cyan-400 text-slate-950 font-medium rounded-tr-none shadow-lg shadow-cyan-950/15"
                                             : "bg-[#08111F] border border-[#1F3557] text-slate-200 rounded-tl-none"
-                                    }`}
+                                        }`}
                                 >
                                     {msg.role === "user" ? (
                                         <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content}</p>
@@ -460,9 +459,8 @@ export default function AIChatbot({ mode = "floating" }: AIChatbotProps) {
             {/* Expanded Chat Drawer */}
             {isOpen && (
                 <div
-                    className={`mb-4 flex w-full max-w-[92vw] flex-col rounded-2xl border border-white/10 shadow-2xl overflow-hidden transition-all duration-300 sm:w-96 ${
-                        isMinimized ? "h-[56px]" : "h-[500px] md:h-[550px]"
-                    }`}
+                    className={`mb-4 flex w-full max-w-[92vw] flex-col rounded-2xl border border-white/10 shadow-2xl overflow-hidden transition-all duration-300 sm:w-96 ${isMinimized ? "h-[56px]" : "h-[500px] md:h-[550px]"
+                        }`}
                 >
                     {chatWindow}
                 </div>
