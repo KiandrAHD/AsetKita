@@ -76,6 +76,102 @@ export async function getAIChatResponse(
         });
         return result.data.message;
     } catch (error: unknown) {
+        console.warn("Firebase Cloud Function failed. Trying client-side fallback...", error);
+        
+        const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+        if (apiKey) {
+            try {
+                return await getAIChatResponseFallback(messages, context, apiKey);
+            } catch (fallbackError) {
+                console.error("Client-side fallback also failed:", fallbackError);
+                throw fallbackError;
+            }
+        }
         throw mapAIError(error);
     }
+}
+
+const AI_SYSTEM_INSTRUCTION = `Kamu adalah "AsetKita AI Assistant", AI Investment Learning Assistant untuk AsetKita, platform edukasi dan simulasi investasi.
+Gunakan Bahasa Indonesia secara default. Bersikap natural, jelas, ramah, profesional, dan mudah dipahami pemula.
+Jelaskan saham, cryptocurrency, logam mulia, investasi, portofolio, transaksi, profit/loss, risiko, market, dan istilah finansial secara edukatif.
+Gunakan bullet points, numbering, contoh sederhana, atau tabel sederhana jika membantu.
+Jangan menjanjikan profit, mengatakan aset pasti naik atau turun, memberi jaminan, atau mendorong pembelian maupun penjualan aset tertentu.
+Jika ditanya apakah harus membeli aset, jelaskan faktor pertimbangan seperti tujuan, kondisi keuangan, toleransi risiko, jangka waktu, dan diversifikasi tanpa memberi keputusan personal yang definitif.
+Bedakan data simulasi AsetKita dari data pasar nyata. Jangan mengaku memiliki data real-time jika tidak diberikan dalam konteks dan jangan mengarang data pengguna.
+Jika data portfolio atau saldo tidak ada di konteks, katakan bahwa data tersebut belum tersedia.
+Jawaban harus generatif dan menjawab pertanyaan pengguna berdasarkan percakapan, bukan berdasarkan jawaban statis.`;
+
+async function getAIChatResponseFallback(
+    messages: ChatMessage[],
+    context?: ChatContext,
+    apiKey?: string
+): Promise<string> {
+    if (!apiKey) {
+        throw new Error("Konfigurasi Gemini belum siap.");
+    }
+
+    const currentMessage = messages[messages.length - 1];
+    const contextInstruction = [
+        context?.page ? `Halaman: ${String(context.page)}` : "",
+        context?.asset ? `Data aset simulasi AsetKita: ${JSON.stringify(context.asset)}` : "",
+    ].filter(Boolean).join("\n");
+
+    const contents = [
+        ...messages.slice(0, -1).map((item) => ({
+            role: item.role,
+            parts: [{ text: item.content }]
+        })),
+        {
+            role: "user",
+            parts: [{ text: contextInstruction ? `${contextInstruction}\n\nPertanyaan pengguna: ${currentMessage.content}` : currentMessage.content }]
+        }
+    ];
+
+    const response = await fetch(
+        "https://generativelanguage.googleapis.com/v1/models/gemini-3.6-flash:generateContent",
+        {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "x-goog-api-key": apiKey
+            },
+            body: JSON.stringify({
+                contents,
+                systemInstruction: {
+                    parts: [{ text: AI_SYSTEM_INSTRUCTION }]
+                },
+                generationConfig: {
+                    temperature: 0.7,
+                    maxOutputTokens: 2048
+                }
+            })
+        }
+    );
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Gemini REST API error status", response.status, errorText);
+        let parsedError = "";
+        try {
+            const errJson = JSON.parse(errorText);
+            parsedError = errJson.error?.message || errorText;
+        } catch {
+            parsedError = errorText;
+        }
+
+        if (response.status === 401 || response.status === 403) {
+            throw new Error(`Kunci API Gemini tidak valid atau tidak diizinkan: ${parsedError}`);
+        }
+        if (response.status === 429) {
+            throw new Error("AI sedang menerima banyak permintaan. Coba beberapa saat lagi.");
+        }
+        throw new Error(`Terjadi kesalahan saat menghubungi layanan AI: ${parsedError} (Status: ${response.status})`);
+    }
+
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) {
+        throw new Error("Gagal mendapatkan respon dari AI.");
+    }
+    return text.trim();
 }
