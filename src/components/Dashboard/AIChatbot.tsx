@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { useLocation, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
     BookOpen,
     Bot,
@@ -19,6 +19,7 @@ import {
 import { assets } from "@/data/assets";
 import { getMarketPrices } from "@/services/marketService";
 import { type ChatContext, type ChatMessage, getAIChatResponse } from "@/services/aiService";
+import { getDemoSession } from "@/services/demoService";
 
 interface AIChatbotProps {
     mode?: "floating" | "fullPage";
@@ -41,6 +42,7 @@ const QUICK_ACTIONS = [
 
 export default function AIChatbot({ mode = "floating" }: AIChatbotProps) {
     const location = useLocation();
+    const navigate = useNavigate();
     const { assetId } = useParams();
 
     const [isOpen, setIsOpen] = useState(false);
@@ -51,7 +53,7 @@ export default function AIChatbot({ mode = "floating" }: AIChatbotProps) {
     const [error, setError] = useState<string | null>(null);
 
     const [pageContext, setPageContext] = useState("Dashboard");
-    const [assetContext, setAssetContext] = useState<any>(undefined);
+    const [assetContext, setAssetContext] = useState<ChatContext["asset"]>(undefined);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -131,10 +133,19 @@ export default function AIChatbot({ mode = "floating" }: AIChatbotProps) {
 
     // Send a message
     const handleSend = async (textToSend: string) => {
-        if (!textToSend.trim() || isLoading) return;
+        const trimmedText = textToSend.trim();
+        if (!trimmedText || isLoading) return;
+        if (trimmedText.length > 4000) {
+            setError("Pesan terlalu panjang. Batasi pertanyaan hingga 4.000 karakter.");
+            return;
+        }
+        if (messages.length >= 20) {
+            setError("Percakapan sudah mencapai batas 20 pesan. Bersihkan percakapan untuk melanjutkan.");
+            return;
+        }
 
         setError(null);
-        const userMsg: ChatMessage = { role: "user", content: textToSend };
+        const userMsg: ChatMessage = { role: "user", content: trimmedText };
         const updatedMessages = [...messages, userMsg];
         setMessages(updatedMessages);
         setInput("");
@@ -149,9 +160,11 @@ export default function AIChatbot({ mode = "floating" }: AIChatbotProps) {
 
             const responseText = await getAIChatResponse(updatedMessages, context);
             setMessages((prev) => [...prev, { role: "model", content: responseText }]);
-        } catch (err: any) {
-            console.error(err);
-            setError(err.message || "Gagal mendapatkan respon dari AI. Silakan coba lagi.");
+        } catch (err: unknown) {
+            console.error("AI request failed", err);
+            setError(getDemoSession()?.isDemo
+                ? "Fitur AI hanya tersedia untuk pengguna yang sudah masuk dengan akun AsetKita."
+                : err instanceof Error ? err.message : "AI sedang mengalami gangguan. Silakan coba lagi.");
         } finally {
             setIsLoading(false);
         }
@@ -378,6 +391,12 @@ export default function AIChatbot({ mode = "floating" }: AIChatbotProps) {
                                     <AlertTriangle size={13} /> Terjadi Kendala
                                 </p>
                                 <p>{error}</p>
+                                {getDemoSession()?.isDemo && (
+                                    <div className="mt-3 flex gap-2">
+                                        <button onClick={() => navigate("/login")} className="rounded-lg bg-cyan-400 px-3 py-1.5 font-semibold text-slate-950">Masuk</button>
+                                        <button onClick={() => navigate("/register")} className="rounded-lg border border-cyan-400/40 px-3 py-1.5 font-semibold text-cyan-300">Buat Akun</button>
+                                    </div>
+                                )}
                                 <button
                                     onClick={() => handleSend(messages[messages.length - 1]?.content || "")}
                                     className="mt-2 text-cyan-400 font-semibold hover:underline"

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteAccount = exports.updateSettings = exports.updateProfile = exports.toggleWatchlist = exports.executeTrade = exports.updateMarketSimulation = exports.getLatestNews = exports.getMarketSnapshot = exports.createDemoToken = exports.completePasswordReset = exports.verifyPasswordResetOtp = exports.completeRegistration = exports.requestEmailOtp = void 0;
+exports.chatWithAI = exports.deleteAccount = exports.updateSettings = exports.updateProfile = exports.toggleWatchlist = exports.executeTrade = exports.updateMarketSimulation = exports.createDemoToken = exports.completePasswordReset = exports.verifyPasswordResetOtp = exports.completeRegistration = exports.requestEmailOtp = void 0;
 const node_crypto_1 = require("node:crypto");
 const app_1 = require("firebase-admin/app");
 const auth_1 = require("firebase-admin/auth");
@@ -14,8 +14,8 @@ const db = (0, firestore_1.getFirestore)();
 const adminAuth = (0, auth_1.getAuth)();
 const resendKey = (0, params_1.defineSecret)("RESEND_API_KEY");
 const otpFromEmail = (0, params_1.defineSecret)("OTP_FROM_EMAIL");
-const newsDataKey = (0, params_1.defineSecret)("NEWSDATA_API_KEY");
-const finnhubKey = (0, params_1.defineSecret)("FINNHUB_API_KEY");
+const geminiApiKeySecret = (0, params_1.defineSecret)("GEMINI_API_KEY");
+const geminiModel = (0, params_1.defineString)("GEMINI_MODEL", { default: "gemini-3.7-flash" });
 const REGION = "asia-southeast2";
 const TTL_MINUTES = 10;
 const RESEND_SECONDS = 60;
@@ -128,60 +128,21 @@ exports.createDemoToken = (0, https_1.onCall)({ region: REGION }, async (request
         fail("Nama panggilan harus terdiri dari 2–30 karakter.");
     return { customToken: await adminAuth.createCustomToken("asetkita-demo", { demo: true, nickname: nickname.trim() }) };
 });
-const CACHE_TTL = 15 * 60 * 1000;
-const marketFallback = [{ symbol: "BTC", name: "Bitcoin", price: 1715000000, changePercent: 2.34 }, { symbol: "ETH", name: "Ethereum", price: 56800000, changePercent: -1.12 }, { symbol: "BBCA", name: "Bank Central Asia", price: 9450, changePercent: 0.86 }, { symbol: "AAPL", name: "Apple Inc.", price: 3200000, changePercent: 1.45 }];
-async function cached(id, factory) {
-    const ref = db.collection("marketCache").doc(id);
-    const snapshot = await ref.get();
-    const cachedAt = snapshot.data()?.cachedAt;
-    if (cachedAt && Date.now() - cachedAt.toMillis() < CACHE_TTL)
-        return snapshot.data()?.value;
-    const value = await factory();
-    await ref.set({ value, cachedAt: firestore_1.FieldValue.serverTimestamp() });
-    return value;
-}
-exports.getMarketSnapshot = (0, https_1.onCall)({ region: REGION, secrets: [finnhubKey] }, async () => {
-    try {
-        return { assets: await cached("summary", async () => {
-                const coins = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=idr&include_24hr_change=true").then((response) => response.ok ? response.json() : Promise.reject(new Error("CoinGecko unavailable")));
-                const assets = [{ symbol: "BTC", name: "Bitcoin", price: coins.bitcoin.idr, changePercent: coins.bitcoin.idr_24h_change }, { symbol: "ETH", name: "Ethereum", price: coins.ethereum.idr, changePercent: coins.ethereum.idr_24h_change }];
-                const token = finnhubKey.value();
-                if (!token)
-                    return [...assets, ...marketFallback.slice(2)];
-                const quote = await fetch(`https://finnhub.io/api/v1/quote?symbol=AAPL&token=${encodeURIComponent(token)}`).then((response) => response.ok ? response.json() : null);
-                return [...assets, { symbol: "AAPL", name: "Apple Inc.", price: Math.round((quote?.c ?? 220) * 16000), changePercent: quote?.dp ?? 0 }, marketFallback[2]];
-            }) };
-    }
-    catch {
-        return { assets: marketFallback };
-    }
-});
-exports.getLatestNews = (0, https_1.onCall)({ region: REGION, secrets: [newsDataKey] }, async () => {
-    try {
-        return { news: await cached("news", async () => {
-                const key = newsDataKey.value();
-                if (!key)
-                    return [];
-                const url = `https://newsdata.io/api/1/latest?apikey=${encodeURIComponent(key)}&q=crypto%20bitcoin%20ethereum%20stocks%20AI%20economy&language=en`;
-                const response = await fetch(url);
-                if (!response.ok)
-                    throw new Error("NewsData unavailable");
-                const body = await response.json();
-                return (body.results ?? []).filter((item) => item.title && item.link).slice(0, 8).map((item, index) => ({ id: item.article_id ?? String(index), title: item.title ?? "Berita pasar", source: item.source_name ?? "NewsData", publishedAt: item.pubDate ?? "Baru saja", url: item.link ?? "#", category: item.category?.[0] }));
-            }) };
-    }
-    catch {
-        return { news: [] };
-    }
-});
 const sim = (category, rows) => rows.map(([symbol, name, ath]) => ({ id: symbol.toLowerCase().replace(".", "-"), symbol, name, price: Math.round(ath * .8 * (category === "stock" && ["bbca", "bbri", "bmri", "tlkm", "asii", "bbni", "bren", "byan", "goto", "icbp", "antm", "klbf", "unvr", "untr", "pgas"].includes(symbol.toLowerCase()) ? 1 : 16000)), volatility: category === "crypto" ? .05 : category === "stock" ? .02 : .01 }));
 const simulationAssets = [
     ...sim("crypto", [["BTC", "Bitcoin", 108900], ["ETH", "Ethereum", 4891], ["BNB", "BNB", 720], ["SOL", "Solana", 260], ["XRP", "XRP", 3.84], ["ADA", "Cardano", 3.1], ["DOGE", "Dogecoin", .73], ["DOT", "Polkadot", 55], ["LINK", "Chainlink", 52.88], ["AVAX", "Avalanche", 146.22], ["SHIB", "Shiba Inu", .00008845], ["TRX", "TRON", .43], ["LTC", "Litecoin", 412.96], ["BCH", "Bitcoin Cash", 4355], ["POL", "Polygon", 2.92]]),
     ...sim("stock", [["AAPL", "Apple Inc.", 310], ["MSFT", "Microsoft Corporation", 500], ["NVDA", "NVIDIA Corporation", 135], ["GOOGL", "Alphabet Inc.", 195], ["AMZN", "Amazon.com Inc.", 200], ["META", "Meta Platforms Inc.", 530], ["TSLA", "Tesla Inc.", 230], ["BRK.B", "Berkshire Hathaway Inc.", 450], ["LLY", "Eli Lilly", 850], ["AVGO", "Broadcom", 175], ["JPM", "JPMorgan", 220], ["WMT", "Walmart", 75], ["V", "Visa", 275], ["XOM", "Exxon Mobil", 120], ["DIS", "Disney", 100], ["BBCA", "Bank Central Asia", 6400], ["BBRI", "Bank Rakyat Indonesia", 3050], ["BMRI", "Bank Mandiri", 4250], ["TLKM", "Telkom Indonesia", 2700], ["ASII", "Astra International", 5150], ["BBNI", "Bank Negara Indonesia", 3650], ["BREN", "Barito Renewables", 3400], ["BYAN", "Bayan Resources", 12100], ["GOTO", "GoTo", 55], ["ICBP", "Indofood CBP", 7500], ["ANTM", "Aneka Tambang", 3100], ["KLBF", "Kalbe Farma", 810], ["UNVR", "Unilever Indonesia", 1850], ["UNTR", "United Tractors", 24000], ["PGAS", "Perusahaan Gas Negara", 1550]]),
     ...sim("metal", [["XRH", "Rhodium", 29800], ["XIR", "Iridium", 9080], ["XAU", "Gold", 5608], ["XPD", "Palladium", 3440], ["XPT", "Platinum", 2290], ["XOS", "Osmium", 1300], ["XRU", "Ruthenium", 870], ["RE", "Rhenium", 370], ["XAG", "Silver", 49.51], ["IN", "Indium", 32.6]])
 ];
+const AI_AUTH_MESSAGE = "Fitur AI hanya tersedia untuk pengguna yang sudah masuk dengan akun AsetKita.";
 const mustAuth = (request) => { if (!request.auth || request.auth.token.demo === true)
-    throw new https_1.HttpsError("unauthenticated", "Silakan masuk dengan akun anggota."); return request.auth.uid; };
+    throw new https_1.HttpsError("unauthenticated", AI_AUTH_MESSAGE); return request.auth.uid; };
+const isAIMessage = (message) => {
+    if (typeof message !== "object" || message === null)
+        return false;
+    const item = message;
+    return (item.role === "user" || item.role === "model") && typeof item.content === "string" && item.content.trim().length > 0 && item.content.length <= 4000;
+};
 exports.updateMarketSimulation = (0, scheduler_1.onSchedule)({ region: REGION, schedule: "every 4 hours", timeZone: "Asia/Jakarta" }, async () => {
     const batch = db.batch();
     const now = firestore_1.Timestamp.now();
@@ -234,4 +195,102 @@ exports.updateProfile = (0, https_1.onCall)({ region: REGION }, async (request) 
     throw new https_1.HttpsError("invalid-argument", "Profil tidak valid."); const name = namaPanggilan.trim(); await db.collection("users").doc(uid).update({ namaPanggilan: name, nomorHP, updatedAt: firestore_1.FieldValue.serverTimestamp() }); await adminAuth.updateUser(uid, { displayName: name }); return { success: true }; });
 exports.updateSettings = (0, https_1.onCall)({ region: REGION }, async (request) => { const uid = mustAuth(request); const keys = ["marketAlerts", "aiInsights", "systemNotifications", "emailDigest", "analytics", "personalizedRecommendations", "portfolioSharing"]; const data = request.data; if (!keys.every((key) => typeof data[key] === "boolean"))
     fail("Pengaturan tidak valid."); await db.collection("settings").doc(uid).set(Object.fromEntries(keys.map((key) => [key, data[key]])), { merge: true }); return { success: true }; });
-exports.deleteAccount = (0, https_1.onCall)({ region: REGION }, async (request) => { const uid = mustAuth(request); await Promise.all([db.collection("users").doc(uid).delete(), db.collection("wallets").doc(uid).delete(), db.collection("watchlists").doc(uid).delete(), db.collection("settings").doc(uid).delete()]); return { success: true }; });
+exports.deleteAccount = (0, https_1.onCall)({ region: REGION }, async (request) => { const uid = mustAuth(request); const portfolio = db.collection("portfolios").doc(`${uid}_utama`); await Promise.all([db.recursiveDelete(portfolio), db.collection("users").doc(uid).delete(), db.collection("wallets").doc(uid).delete(), db.collection("watchlists").doc(uid).delete(), db.collection("settings").doc(uid).delete()]); const transactions = await db.collection("transactions").where("uid", "==", uid).get(); const batch = db.batch(); transactions.docs.forEach((row) => batch.delete(row.ref)); await batch.commit(); await adminAuth.deleteUser(uid); return { success: true }; });
+exports.chatWithAI = (0, https_1.onCall)({ region: REGION, secrets: [geminiApiKeySecret] }, async (request) => {
+    const uid = mustAuth(request);
+    const requestId = (0, node_crypto_1.randomUUID)();
+    const startedAt = Date.now();
+    const payload = request.data;
+    const rawMessages = payload?.messages;
+    if (!Array.isArray(rawMessages) || rawMessages.length === 0 || rawMessages.length > 20)
+        fail("Jumlah pesan harus antara 1 dan 20.");
+    const messages = rawMessages;
+    if (!messages.every(isAIMessage))
+        fail("Setiap pesan harus memiliki role yang valid dan isi maksimal 4.000 karakter.");
+    const chatMessages = messages;
+    const context = payload?.context;
+    if (JSON.stringify(context ?? {}).length > 6000)
+        fail("Konteks AI terlalu panjang.");
+    const model = geminiModel.value();
+    console.info("AI request started", { requestId, uid, model, messageCount: chatMessages.length });
+    let apiKey;
+    try {
+        apiKey = geminiApiKeySecret.value();
+    }
+    catch (error) {
+        console.error("AI secret unavailable", { requestId, uid, errorCategory: "configuration" });
+        throw new https_1.HttpsError("failed-precondition", "Konfigurasi AI server belum tersedia.");
+    }
+    if (!apiKey)
+        throw new https_1.HttpsError("failed-precondition", "Konfigurasi AI server belum tersedia.");
+    let systemInstruction = `Anda adalah AI Investment Learning Assistant untuk website AsetKita.
+Karakter Anda:
+- Edukatif, jelas, ramah, tidak menggurui.
+- Menggunakan Bahasa Indonesia.
+- Menjelaskan istilah sulit dengan bahasa sederhana.
+- Dapat menggunakan contoh sederhana jika membantu.
+- Membantu pengguna memahami investasi, bukan menggantikan penasihat keuangan pribadi.
+
+Aturan Penting:
+1. Jangan menjanjikan keuntungan.
+2. Jangan mengatakan sebuah investasi pasti naik.
+3. Jangan mengatakan sebuah investasi pasti aman.
+4. Jangan memberikan instruksi transaksi personal seperti "beli sekarang" atau "jual sekarang".
+5. Jangan membuat prediksi harga seolah-olah pasti benar.
+6. Selalu jelaskan risiko jika pembahasan berkaitan dengan keputusan investasi.
+7. Jika data tidak tersedia, jangan mengarang data.
+8. Bedakan antara fakta dari data website dan penjelasan umum.
+9. Jika pengguna meminta rekomendasi investasi personal, berikan informasi umum mengenai faktor yang perlu dipertimbangkan (seperti tingkat risiko, tujuan investasi, jangka waktu, kondisi aset, dan diversifikasi) dan sarankan pengguna melakukan riset sendiri.
+10. Jangan mengklaim memiliki data real-time jika website tidak memberikan data real-time.
+11. Jawaban harus sesuai konteks data yang diberikan oleh backend.
+12. Gunakan Bahasa Indonesia kecuali pengguna menggunakan bahasa lain.
+13. Untuk pertanyaan sederhana, berikan jawaban ringkas.
+14. Untuk pertanyaan edukasi, gunakan struktur yang mudah dipahami.
+15. Jika pengguna meminta kuis/tes, jangan membuat kuis dengan pilihan jawaban A/B/C/D atau skor. Cukup jelaskan konsep, berikan ringkasan materi, dan berikan pertanyaan reflektif untuk belajar.`;
+    if (context && typeof context === "object") {
+        systemInstruction += `\n\nKonteks Halaman Saat Ini:`;
+        if (context.page) {
+            systemInstruction += `\n- Halaman: ${context.page}`;
+        }
+        if (context.asset) {
+            systemInstruction += `\n- Aset yang sedang dilihat: ${String(context.asset.name ?? "Tidak tersedia")} (${String(context.asset.symbol ?? "Tidak tersedia")})
+    - Kategori: ${String(context.asset.category ?? "Tidak tersedia")}
+    - Harga simulasi AsetKita: ${String(context.asset.price ?? "Data belum tersedia")}
+    - Perubahan: ${String(context.asset.changePercent ?? "Data belum tersedia")}
+    - ATH: ${String(context.asset.ath ?? "Data belum tersedia")}
+    - Deskripsi: ${String(context.asset.description ?? "Data tersebut belum tersedia pada konteks AsetKita saat ini.")}`;
+        }
+    }
+    const contents = chatMessages.map((item) => {
+        return {
+            role: item.role,
+            parts: [{ text: item.content }],
+        };
+    });
+    try {
+        const { GoogleGenAI } = await import("@google/genai");
+        const ai = new GoogleGenAI({ apiKey });
+        const response = await Promise.race([
+            ai.models.generateContent({ model, contents, config: { systemInstruction, temperature: 0.7, maxOutputTokens: 2048 } }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 30_000)),
+        ]);
+        const text = response.text?.trim();
+        if (!text)
+            throw new Error("empty_response");
+        console.info("AI request completed", { requestId, uid, model, durationMs: Date.now() - startedAt, status: "success" });
+        return { text };
+    }
+    catch (error) {
+        const errorText = error instanceof Error ? error.message : "unknown";
+        const providerStatus = typeof error === "object" && error !== null && "status" in error ? Number(error.status) : 0;
+        const errorCategory = errorText === "timeout" ? "timeout" : providerStatus === 429 ? "quota" : providerStatus === 401 || providerStatus === 403 ? "configuration" : "provider";
+        console.error("AI request failed", { requestId, uid, model, durationMs: Date.now() - startedAt, status: "error", errorCategory });
+        if (errorCategory === "timeout")
+            throw new https_1.HttpsError("deadline-exceeded", "Layanan AI tidak merespons tepat waktu.");
+        if (errorCategory === "quota")
+            throw new https_1.HttpsError("resource-exhausted", "Layanan AI sedang mencapai batas penggunaan. Silakan coba beberapa saat lagi.");
+        if (errorCategory === "configuration")
+            throw new https_1.HttpsError("failed-precondition", "Layanan AI sedang mengalami masalah konfigurasi.");
+        throw new https_1.HttpsError("internal", "AI sedang mengalami gangguan. Silakan coba lagi.");
+    }
+});

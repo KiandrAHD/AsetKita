@@ -18,7 +18,6 @@ import Settings from "@/pages/Dashboard/settings";
 import Notification from "@/pages/Dashboard/notification";
 import RequireAuth from "@/components/auth/RequireAuth";
 import DashboardLayout from "@/layouts/DashboardLayout";
-import PlaceholderPage from "@/pages/Dashboard/PlaceholderPage";
 import Watchlist from "@/pages/Dashboard/watchlist";
 import AddFavorite from "@/pages/Dashboard/addFavorite";
 import Transactions from "@/pages/Dashboard/transactions";

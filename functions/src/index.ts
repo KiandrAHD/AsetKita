@@ -1,9 +1,9 @@
-import { createHash, randomBytes, randomInt } from "node:crypto";
+import { createHash, randomBytes, randomInt, randomUUID } from "node:crypto";
 import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { FieldValue, Timestamp, getFirestore } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { defineSecret } from "firebase-functions/params";
+import { defineSecret, defineString } from "firebase-functions/params";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { Resend } from "resend";
 
@@ -13,6 +13,7 @@ const adminAuth = getAuth();
 const resendKey = defineSecret("RESEND_API_KEY");
 const otpFromEmail = defineSecret("OTP_FROM_EMAIL");
 const geminiApiKeySecret = defineSecret("GEMINI_API_KEY");
+const geminiModel = defineString("GEMINI_MODEL", { default: "gemini-3.7-flash" });
 const REGION = "asia-southeast2";
 const TTL_MINUTES = 10;
 const RESEND_SECONDS = 60;
@@ -112,7 +113,14 @@ const simulationAssets: SimAsset[] = [
   ...sim("stock", [["AAPL","Apple Inc.",310],["MSFT","Microsoft Corporation",500],["NVDA","NVIDIA Corporation",135],["GOOGL","Alphabet Inc.",195],["AMZN","Amazon.com Inc.",200],["META","Meta Platforms Inc.",530],["TSLA","Tesla Inc.",230],["BRK.B","Berkshire Hathaway Inc.",450],["LLY","Eli Lilly",850],["AVGO","Broadcom",175],["JPM","JPMorgan",220],["WMT","Walmart",75],["V","Visa",275],["XOM","Exxon Mobil",120],["DIS","Disney",100],["BBCA","Bank Central Asia",6400],["BBRI","Bank Rakyat Indonesia",3050],["BMRI","Bank Mandiri",4250],["TLKM","Telkom Indonesia",2700],["ASII","Astra International",5150],["BBNI","Bank Negara Indonesia",3650],["BREN","Barito Renewables",3400],["BYAN","Bayan Resources",12100],["GOTO","GoTo",55],["ICBP","Indofood CBP",7500],["ANTM","Aneka Tambang",3100],["KLBF","Kalbe Farma",810],["UNVR","Unilever Indonesia",1850],["UNTR","United Tractors",24000],["PGAS","Perusahaan Gas Negara",1550]]),
   ...sim("metal", [["XRH","Rhodium",29800],["XIR","Iridium",9080],["XAU","Gold",5608],["XPD","Palladium",3440],["XPT","Platinum",2290],["XOS","Osmium",1300],["XRU","Ruthenium",870],["RE","Rhenium",370],["XAG","Silver",49.51],["IN","Indium",32.6]])
 ];
-const mustAuth = (request: { auth?: { uid: string; token: Record<string, unknown> } }) => { if (!request.auth || request.auth.token.demo === true) throw new HttpsError("unauthenticated", "Silakan masuk dengan akun anggota."); return request.auth.uid; };
+const AI_AUTH_MESSAGE = "Fitur AI hanya tersedia untuk pengguna yang sudah masuk dengan akun AsetKita.";
+const mustAuth = (request: { auth?: { uid: string; token: Record<string, unknown> } }) => { if (!request.auth || request.auth.token.demo === true) throw new HttpsError("unauthenticated", AI_AUTH_MESSAGE); return request.auth.uid; };
+type AIMessage = { role: "user" | "model"; content: string };
+const isAIMessage = (message: unknown): message is AIMessage => {
+  if (typeof message !== "object" || message === null) return false;
+  const item = message as Record<string, unknown>;
+  return (item.role === "user" || item.role === "model") && typeof item.content === "string" && item.content.trim().length > 0 && item.content.length <= 4000;
+};
 
 export const updateMarketSimulation = onSchedule({ region: REGION, schedule: "every 4 hours", timeZone: "Asia/Jakarta" }, async () => {
   const batch = db.batch(); const now = Timestamp.now();
@@ -135,38 +143,26 @@ export const updateSettings = onCall({ region: REGION }, async (request) => { co
 export const deleteAccount = onCall({ region: REGION }, async (request) => { const uid = mustAuth(request); const portfolio = db.collection("portfolios").doc(`${uid}_utama`); await Promise.all([db.recursiveDelete(portfolio), db.collection("users").doc(uid).delete(), db.collection("wallets").doc(uid).delete(), db.collection("watchlists").doc(uid).delete(), db.collection("settings").doc(uid).delete()]); const transactions = await db.collection("transactions").where("uid", "==", uid).get(); const batch = db.batch(); transactions.docs.forEach((row) => batch.delete(row.ref)); await batch.commit(); await adminAuth.deleteUser(uid); return { success: true }; });
 
 export const chatWithAI = onCall({ region: REGION, secrets: [geminiApiKeySecret] }, async (request) => {
-  const { messages, context } = request.data as {
-    messages?: { role: "user" | "model"; content: string }[];
-    context?: {
-      page?: string;
-      asset?: {
-        id: string;
-        name: string;
-        symbol: string;
-        category: string;
-        price: number;
-        changePercent?: number;
-        ath: number;
-        currency: string;
-        description?: string;
-      };
-    };
-  };
+  const uid = mustAuth(request);
+  const requestId = randomUUID();
+  const startedAt = Date.now();
+  const payload = request.data as { messages?: unknown; context?: unknown };
+  const rawMessages = payload?.messages;
+  if (!Array.isArray(rawMessages) || rawMessages.length === 0 || rawMessages.length > 20) fail("Jumlah pesan harus antara 1 dan 20.");
+  const messages = rawMessages as unknown[];
+  if (!messages.every(isAIMessage)) fail("Setiap pesan harus memiliki role yang valid dan isi maksimal 4.000 karakter.");
+  const chatMessages = messages as AIMessage[];
+  const context = payload?.context as { page?: unknown; asset?: Record<string, unknown> } | undefined;
+  if (JSON.stringify(context ?? {}).length > 6000) fail("Konteks AI terlalu panjang.");
+  const model = geminiModel.value();
+  console.info("AI request started", { requestId, uid, model, messageCount: chatMessages.length });
 
-  if (!messages || !Array.isArray(messages)) {
-    fail("Pesan tidak valid.");
+  let apiKey: string;
+  try { apiKey = geminiApiKeySecret.value(); } catch (error: unknown) {
+    console.error("AI secret unavailable", { requestId, uid, errorCategory: "configuration" });
+    throw new HttpsError("failed-precondition", "Konfigurasi AI server belum tersedia.");
   }
-
-  let apiKey = "";
-  try {
-    apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || (geminiApiKeySecret.value ? geminiApiKeySecret.value() : "");
-  } catch (err) {
-    apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || "";
-  }
-
-  if (!apiKey) {
-    fail("API key Gemini tidak terkonfigurasi di server.", "failed-precondition");
-  }
+  if (!apiKey) throw new HttpsError("failed-precondition", "Konfigurasi AI server belum tersedia.");
 
   let systemInstruction = `Anda adalah AI Investment Learning Assistant untuk website AsetKita.
 Karakter Anda:
@@ -193,56 +189,47 @@ Aturan Penting:
 14. Untuk pertanyaan edukasi, gunakan struktur yang mudah dipahami.
 15. Jika pengguna meminta kuis/tes, jangan membuat kuis dengan pilihan jawaban A/B/C/D atau skor. Cukup jelaskan konsep, berikan ringkasan materi, dan berikan pertanyaan reflektif untuk belajar.`;
 
-  if (context) {
+  if (context && typeof context === "object") {
     systemInstruction += `\n\nKonteks Halaman Saat Ini:`;
     if (context.page) {
       systemInstruction += `\n- Halaman: ${context.page}`;
     }
     if (context.asset) {
-      systemInstruction += `\n- Aset yang sedang dilihat: ${context.asset.name} (${context.asset.symbol})
-- Kategori: ${context.asset.category}
-- Harga saat ini: Rp ${context.asset.price.toLocaleString("id-ID")}
-- Perubahan Harga Hari Ini: ${context.asset.changePercent ?? 0}%
-- ATH (All-Time High): ${context.asset.ath}
-- Deskripsi Aset: ${context.asset.description || "Aset simulasi di website AsetKita"}`;
+      systemInstruction += `\n- Aset yang sedang dilihat: ${String(context.asset.name ?? "Tidak tersedia")} (${String(context.asset.symbol ?? "Tidak tersedia")})
+    - Kategori: ${String(context.asset.category ?? "Tidak tersedia")}
+    - Harga simulasi AsetKita: ${String(context.asset.price ?? "Data belum tersedia")}
+    - Perubahan: ${String(context.asset.changePercent ?? "Data belum tersedia")}
+    - ATH: ${String(context.asset.ath ?? "Data belum tersedia")}
+    - Deskripsi: ${String(context.asset.description ?? "Data tersebut belum tersedia pada konteks AsetKita saat ini.")}`;
     }
   }
 
-  const contents = messages.map((msg) => ({
-    role: msg.role === "model" ? "model" : "user",
-    parts: [{ text: msg.content }],
-  }));
+  const contents = chatMessages.map((item) => {
+    return {
+      role: item.role,
+      parts: [{ text: item.content }],
+    };
+  });
 
   try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          contents,
-          systemInstruction: {
-            parts: [{ text: systemInstruction }],
-          },
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 2048,
-          },
-        }),
-      }
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Gemini API error: ${response.status} - ${errorText}`);
-    }
-
-    const data = await response.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const { GoogleGenAI } = await import("@google/genai");
+    const ai = new GoogleGenAI({ apiKey });
+    const response = await Promise.race([
+      ai.models.generateContent({ model, contents, config: { systemInstruction, temperature: 0.7, maxOutputTokens: 2048 } }),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 30_000)),
+    ]);
+    const text = response.text?.trim();
+    if (!text) throw new Error("empty_response");
+    console.info("AI request completed", { requestId, uid, model, durationMs: Date.now() - startedAt, status: "success" });
     return { text };
-  } catch (error: any) {
-    throw new HttpsError("internal", error.message || "Terjadi kesalahan saat menghubungi API Gemini.");
+  } catch (error: unknown) {
+    const errorText = error instanceof Error ? error.message : "unknown";
+    const providerStatus = typeof error === "object" && error !== null && "status" in error ? Number(error.status) : 0;
+    const errorCategory = errorText === "timeout" ? "timeout" : providerStatus === 429 ? "quota" : providerStatus === 401 || providerStatus === 403 ? "configuration" : "provider";
+    console.error("AI request failed", { requestId, uid, model, durationMs: Date.now() - startedAt, status: "error", errorCategory });
+    if (errorCategory === "timeout") throw new HttpsError("deadline-exceeded", "Layanan AI tidak merespons tepat waktu.");
+    if (errorCategory === "quota") throw new HttpsError("resource-exhausted", "Layanan AI sedang mencapai batas penggunaan. Silakan coba beberapa saat lagi.");
+    if (errorCategory === "configuration") throw new HttpsError("failed-precondition", "Layanan AI sedang mengalami masalah konfigurasi.");
+    throw new HttpsError("internal", "AI sedang mengalami gangguan. Silakan coba lagi.");
   }
 });
