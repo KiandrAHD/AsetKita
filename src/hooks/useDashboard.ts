@@ -3,6 +3,7 @@ import { onAuthStateChanged, type User } from "firebase/auth";
 import { doc, onSnapshot } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import { getDashboardData } from "@/services/dashboardService";
+import { subscribeRealTimeMarketPrices } from "@/services/marketService";
 import type { DashboardData } from "@/types/dashboard";
 
 export function useDashboard(_user?: User | null) {
@@ -32,9 +33,26 @@ export function useDashboard(_user?: User | null) {
     }
   }, [currentUser]);
 
+  const loadSilent = useCallback(async () => {
+    try {
+      const fresh = await getDashboardData(currentUser?.uid ?? auth.currentUser?.uid);
+      setData(fresh);
+    } catch {
+      // Ignore background errors
+    }
+  }, [currentUser]);
+
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Subscribe to real-time market price changes so portfolio updates dynamically
+  useEffect(() => {
+    const unsub = subscribeRealTimeMarketPrices(() => {
+      void loadSilent();
+    });
+    return () => unsub();
+  }, [loadSilent]);
 
   // Real-time Firestore sync across devices
   useEffect(() => {
@@ -46,7 +64,7 @@ export function useDashboard(_user?: User | null) {
       const unsub = onSnapshot(
         walletRef,
         () => {
-          void load();
+          void loadSilent();
         },
         (err) => {
           console.warn("Wallet snapshot listener error:", err);
@@ -56,18 +74,18 @@ export function useDashboard(_user?: User | null) {
     } catch {
       // Ignore if Firestore is unavailable
     }
-  }, [currentUser, load]);
+  }, [currentUser, loadSilent]);
 
   // Sync across tabs/windows on local storage changes
   useEffect(() => {
     const handleStorage = (e: StorageEvent) => {
       if (e.key === "asetkita-demo" || e.key === "asetkita-local-accounts") {
-        void load();
+        void loadSilent();
       }
     };
     window.addEventListener("storage", handleStorage);
     return () => window.removeEventListener("storage", handleStorage);
-  }, [load]);
+  }, [loadSilent]);
 
   return { data, loading, error, reload: load };
 }

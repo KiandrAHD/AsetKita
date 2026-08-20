@@ -49,14 +49,16 @@ export default function SummaryCards({
 
     return (
         <>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 {cards.map(({ label, value, hint, icon: Icon, isSaldo }) => (
-                    <DashboardCard key={label} className="relative p-5">
+                    <DashboardCard key={label} className="relative p-5 transition-all hover:border-white/20 hover:bg-[#132235]">
                         <div className="flex items-start justify-between">
                             <p className="text-sm text-slate-400">{label}</p>
-                            <Icon size={18} className="text-cyan-300" />
+                            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-cyan-400/10">
+                                <Icon size={17} className="text-cyan-300" />
+                            </div>
                         </div>
-                        <p className="mt-5 text-2xl font-semibold tracking-tight text-white">
+                        <p className="mt-4 text-xl sm:text-2xl font-bold tracking-tight text-white whitespace-nowrap truncate">
                             {value}
                         </p>
                         <div className="mt-2 flex items-center justify-between">
