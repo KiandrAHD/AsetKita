@@ -290,16 +290,45 @@ export function getHistory(assetId: string, currentPrice?: number): PriceHistory
     return points;
 }
 
+const getLocalWatchlist = (uid?: string): string[] => {
+    try {
+        const key = `asetkita-watchlist-${uid ?? "member"}`;
+        const val = localStorage.getItem(key);
+        return val ? (JSON.parse(val) as string[]) : ["nvda", "aapl", "btc"];
+    } catch {
+        return ["nvda", "aapl", "btc"];
+    }
+};
+
+const setLocalWatchlist = (assetIds: string[], uid?: string) => {
+    try {
+        const key = `asetkita-watchlist-${uid ?? "member"}`;
+        localStorage.setItem(key, JSON.stringify(assetIds));
+        window.dispatchEvent(new CustomEvent("asetkita-watchlist-changed", { detail: { assetIds } }));
+    } catch {}
+};
+
 export async function getWatchlist(uid?: string): Promise<Watchlist> {
-    if (getDemoSession()?.isDemo) return { assetIds: demoState().watchlist };
-    if (!uid) return { assetIds: [] };
+    if (getDemoSession()?.isDemo) {
+        const state = demoState();
+        // If empty demo state watchlist on first load, initialize with default array
+        if (!state.watchlist || state.watchlist.length === 0) {
+            const initial = ["nvda", "aapl", "btc"];
+            saveDemoState({ watchlist: initial });
+            return { assetIds: initial };
+        }
+        return { assetIds: state.watchlist };
+    }
+    const local = getLocalWatchlist(uid);
+    if (!uid) return { assetIds: local };
     try {
         const snap = await getDocs(
             query(collection(db, "watchlists"), where("uid", "==", uid)),
         );
-        return { assetIds: (snap.docs[0]?.data()?.assetIds ?? []) as string[] };
+        const cloudIds = snap.docs[0]?.data()?.assetIds as string[] | undefined;
+        return { assetIds: cloudIds ?? local };
     } catch {
-        return { assetIds: [] };
+        return { assetIds: local };
     }
 }
 
@@ -307,19 +336,51 @@ export function subscribeWatchlist(
     uid: string | undefined,
     onChange: (watchlist: Watchlist) => void,
 ) {
-    if (getDemoSession()?.isDemo) {
-        onChange({ assetIds: demoState().watchlist });
-        return () => undefined;
+    const notifyCurrent = async () => {
+        const wl = await getWatchlist(uid);
+        onChange(wl);
+    };
+
+    void notifyCurrent();
+
+    const handleCustomEvent = (e: Event) => {
+        const customEv = e as CustomEvent<{ assetIds: string[] }>;
+        if (customEv.detail?.assetIds) {
+            onChange({ assetIds: customEv.detail.assetIds });
+        } else {
+            void notifyCurrent();
+        }
+    };
+
+    const handleStorageEvent = (e: StorageEvent) => {
+        if (e.key?.includes("watchlist") || e.key === "asetkita-demo") {
+            void notifyCurrent();
+        }
+    };
+
+    window.addEventListener("asetkita-watchlist-changed", handleCustomEvent);
+    window.addEventListener("storage", handleStorageEvent);
+
+    let unsubFirestore: (() => void) | null = null;
+    if (!getDemoSession()?.isDemo && uid) {
+        try {
+            const q = query(collection(db, "watchlists"), where("uid", "==", uid));
+            unsubFirestore = onSnapshot(q, (snapshot) => {
+                const docSnap = snapshot.docs[0];
+                if (docSnap?.exists()) {
+                    const assetIds = (docSnap.data()?.assetIds ?? []) as string[];
+                    setLocalWatchlist(assetIds, uid);
+                    onChange({ assetIds });
+                }
+            }, () => { /* ignore firestore subscription errors */ });
+        } catch { /* fallback silently */ }
     }
-    if (!uid) {
-        onChange({ assetIds: [] });
-        return () => undefined;
-    }
-    const q = query(collection(db, "watchlists"), where("uid", "==", uid));
-    return onSnapshot(q, (snapshot) => {
-        const doc = snapshot.docs[0];
-        onChange({ assetIds: (doc?.data()?.assetIds ?? []) as string[] });
-    });
+
+    return () => {
+        window.removeEventListener("asetkita-watchlist-changed", handleCustomEvent);
+        window.removeEventListener("storage", handleStorageEvent);
+        if (unsubFirestore) unsubFirestore();
+    };
 }
 
 export async function toggleWatchlist(
@@ -328,16 +389,38 @@ export async function toggleWatchlist(
 ): Promise<Watchlist> {
     if (getDemoSession()?.isDemo) {
         const state = demoState();
-        const assetIds = state.watchlist.includes(assetId)
-            ? state.watchlist.filter((id) => id !== assetId)
-            : [...state.watchlist, assetId];
+        const currentList = state.watchlist && state.watchlist.length > 0 ? state.watchlist : ["nvda", "aapl", "btc"];
+        const assetIds = currentList.includes(assetId)
+            ? currentList.filter((id) => id !== assetId)
+            : [...currentList, assetId];
         saveDemoState({ watchlist: assetIds });
+        window.dispatchEvent(new CustomEvent("asetkita-watchlist-changed", { detail: { assetIds } }));
         return { assetIds };
     }
-    if (!uid) throw new Error("Sesi tidak ditemukan.");
-    return (await httpsCallable(functions, "toggleWatchlist")({ assetId }))
-        .data as Watchlist;
+
+    const localList = getLocalWatchlist(uid);
+    const assetIds = localList.includes(assetId)
+        ? localList.filter((id) => id !== assetId)
+        : [...localList, assetId];
+    
+    setLocalWatchlist(assetIds, uid);
+
+    if (uid) {
+        try {
+            const res = await httpsCallable(functions, "toggleWatchlist")({ assetId });
+            const data = res.data as Watchlist;
+            if (data?.assetIds) {
+                setLocalWatchlist(data.assetIds, uid);
+                return data;
+            }
+        } catch {
+            // Cloud function might not be deployed locally, fallback to local storage state
+        }
+    }
+
+    return { assetIds };
 }
+
 
 export async function trade(
     uid: string | undefined,

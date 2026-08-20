@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Outlet } from "react-router-dom";
 import Sidebar from "@/components/Dashboard/Sidebar";
 import AIChatbot from "@/components/Dashboard/AIChatbot";
+import { ToastContainer } from "@/components/Dashboard/Toast";
 
 function DashboardLayout() {
     const [collapsed, setCollapsed] = useState(false);
@@ -34,8 +35,12 @@ function DashboardLayout() {
             
             {/* Floating AI Investment Assistant */}
             <AIChatbot mode="floating" />
+
+            {/* Global Toast Notifications */}
+            <ToastContainer />
         </div>
     );
 }
 
 export default DashboardLayout;
+
