@@ -76,19 +76,53 @@ export async function getAIChatResponse(
         });
         return result.data.message;
     } catch (error: unknown) {
-        console.warn("Firebase Cloud Function failed. Trying client-side fallback...", error);
+    try {
+        const currentMessage = messages[messages.length - 1];
+        const result = await chatWithAI({
+            message: currentMessage.content,
+            history: messages.slice(0, -1),
+            context,
+        });
+        return result.data.message;
+    } catch (error: unknown) {
+        console.warn("Firebase Cloud Function failed. Trying client-side fallback with API key rotation...", error);
         
-        const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-        if (apiKey) {
+        if (GEMINI_KEYS.length > 0) {
             try {
-                return await getAIChatResponseFallback(messages, context, apiKey);
+                return await getAIChatResponseFallback(messages, context);
             } catch (fallbackError) {
-                console.error("Client-side fallback also failed:", fallbackError);
+                console.error("Client-side fallback also failed after trying all keys:", fallbackError);
                 throw fallbackError;
             }
         }
         throw mapAIError(error);
     }
+}
+
+const GEMINI_KEYS = (import.meta.env.VITE_GEMINI_API_KEYS || "")
+    .split(",")
+    .map((key: string) => key.trim())
+    .filter(Boolean);
+
+const STORAGE_KEY_IDX = "asetkita_gemini_key_idx";
+
+function getActiveApiKey(): string {
+    if (GEMINI_KEYS.length === 0) return "";
+    let idx = parseInt(localStorage.getItem(STORAGE_KEY_IDX) || "0", 10);
+    if (isNaN(idx) || idx < 0 || idx >= GEMINI_KEYS.length) {
+        idx = 0;
+        localStorage.setItem(STORAGE_KEY_IDX, "0");
+    }
+    return GEMINI_KEYS[idx];
+}
+
+function rotateApiKey(): string {
+    if (GEMINI_KEYS.length === 0) return "";
+    let idx = parseInt(localStorage.getItem(STORAGE_KEY_IDX) || "0", 10);
+    idx = (idx + 1) % GEMINI_KEYS.length;
+    localStorage.setItem(STORAGE_KEY_IDX, String(idx));
+    console.warn(`Gemini API Key rotated to key index ${idx}`);
+    return GEMINI_KEYS[idx];
 }
 
 const AI_SYSTEM_INSTRUCTION = `Kamu adalah "AsetKita AI Assistant", AI Investment Learning Assistant untuk AsetKita, platform edukasi dan simulasi investasi.
@@ -103,10 +137,9 @@ Jawaban harus generatif dan menjawab pertanyaan pengguna berdasarkan percakapan,
 
 async function getAIChatResponseFallback(
     messages: ChatMessage[],
-    context?: ChatContext,
-    apiKey?: string
+    context?: ChatContext
 ): Promise<string> {
-    if (!apiKey) {
+    if (GEMINI_KEYS.length === 0) {
         throw new Error("Konfigurasi Gemini belum siap.");
     }
 
@@ -127,51 +160,74 @@ async function getAIChatResponseFallback(
         }
     ];
 
-    const response = await fetch(
-        "https://generativelanguage.googleapis.com/v1/models/gemini-3.6-flash:generateContent",
-        {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "x-goog-api-key": apiKey
-            },
-            body: JSON.stringify({
-                contents,
-                systemInstruction: {
-                    parts: [{ text: AI_SYSTEM_INSTRUCTION }]
-                },
-                generationConfig: {
-                    temperature: 0.7,
-                    maxOutputTokens: 2048
-                }
-            })
-        }
-    );
+    let attempts = 0;
+    while (attempts < GEMINI_KEYS.length) {
+        const apiKey = getActiveApiKey();
+        attempts++;
 
-    if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Gemini REST API error status", response.status, errorText);
-        let parsedError = "";
         try {
-            const errJson = JSON.parse(errorText);
-            parsedError = errJson.error?.message || errorText;
-        } catch {
-            parsedError = errorText;
-        }
+            const response = await fetch(
+                "https://generativelanguage.googleapis.com/v1/models/gemini-3.6-flash:generateContent",
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "x-goog-api-key": apiKey
+                    },
+                    body: JSON.stringify({
+                        contents,
+                        systemInstruction: {
+                            parts: [{ text: AI_SYSTEM_INSTRUCTION }]
+                        },
+                        generationConfig: {
+                            temperature: 0.7,
+                            maxOutputTokens: 2048
+                        }
+                    })
+                }
+            );
 
-        if (response.status === 401 || response.status === 403) {
-            throw new Error(`Kunci API Gemini tidak valid atau tidak diizinkan: ${parsedError}`);
+            if (!response.ok) {
+                const errorText = await response.text();
+                const activeIdx = localStorage.getItem(STORAGE_KEY_IDX) || "0";
+                console.error(`Gemini REST API error (Key Index ${activeIdx}):`, response.status, errorText);
+                
+                let parsedError = "";
+                try {
+                    const errJson = JSON.parse(errorText);
+                    parsedError = errJson.error?.message || errorText;
+                } catch {
+                    parsedError = errorText;
+                }
+
+                // If rate limit (429) or auth errors (401/403/404), rotate the key and try again
+                if (response.status === 429 || response.status === 401 || response.status === 403 || response.status === 404) {
+                    console.warn(`API key failed with status ${response.status}. Rotating key...`);
+                    rotateApiKey();
+                    continue;
+                }
+                
+                throw new Error(`Terjadi kesalahan saat menghubungi layanan AI: ${parsedError} (Status: ${response.status})`);
+            }
+
+            const data = await response.json();
+            const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (!text) {
+                throw new Error("Gagal mendapatkan respon dari AI.");
+            }
+            return text.trim();
+
+        } catch (err: unknown) {
+            const isAuthOrQuotaError = err instanceof Error && 
+                (err.message.includes("429") || err.message.includes("401") || err.message.includes("403") || err.message.includes("404") || err.message.includes("tidak valid"));
+            
+            if (attempts >= GEMINI_KEYS.length) {
+                throw err;
+            }
+            console.warn(`Request failed. Rotating key and retrying...`, err);
+            rotateApiKey();
         }
-        if (response.status === 429) {
-            throw new Error("AI sedang menerima banyak permintaan. Coba beberapa saat lagi.");
-        }
-        throw new Error(`Terjadi kesalahan saat menghubungi layanan AI: ${parsedError} (Status: ${response.status})`);
     }
 
-    const data = await response.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) {
-        throw new Error("Gagal mendapatkan respon dari AI.");
-    }
-    return text.trim();
+    throw new Error("Semua Kunci API Gemini telah mencapai batas limit (Rate Limit/Quota). Silakan coba lagi nanti.");
 }
