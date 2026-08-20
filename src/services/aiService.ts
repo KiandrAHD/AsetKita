@@ -76,15 +76,6 @@ export async function getAIChatResponse(
         });
         return result.data.message;
     } catch (error: unknown) {
-    try {
-        const currentMessage = messages[messages.length - 1];
-        const result = await chatWithAI({
-            message: currentMessage.content,
-            history: messages.slice(0, -1),
-            context,
-        });
-        return result.data.message;
-    } catch (error: unknown) {
         console.warn("Firebase Cloud Function failed. Trying client-side fallback with API key rotation...", error);
         
         if (GEMINI_KEYS.length > 0) {
