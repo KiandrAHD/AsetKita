@@ -1,14 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
-import { ArrowLeft, Share2, Star } from "lucide-react";
+import { ArrowLeft, Share2, Star, Wallet } from "lucide-react";
 import PageFrame from "@/components/Dashboard/PageFrame";
 import TradeModal from "@/components/Dashboard/TradeModal";
 import { assets } from "@/data/assets";
-import { getHistory, getMarketPrices, getWatchlist, subscribeRealTimeMarketPrices, toggleWatchlist } from "@/services/marketService";
+import {
+    getHistory,
+    getMarketPrices,
+    getWatchlist,
+    subscribeRealTimeMarketPrices,
+    subscribeWatchlist,
+    toggleWatchlist,
+} from "@/services/marketService";
 import { auth } from "@/lib/firebase";
-import type { MarketPrice, PriceHistoryPoint } from "@/types/dashboard";
+import type { Holding, MarketPrice, PriceHistoryPoint } from "@/types/dashboard";
 import { formatPercent, formatRupiah } from "@/utils/formatters";
+import { showToast } from "@/components/Dashboard/Toast";
+import { useDashboard } from "@/hooks/useDashboard";
 
 const detailMap: Record<string, { label: string; value: string }[]> = {
     aapl: [{ label: "Sektor", value: "Teknologi" }, { label: "Negara", value: "Amerika Serikat" }, { label: "Ticker", value: "AAPL" }],
@@ -20,6 +29,8 @@ export default function AssetDetail() {
     const { assetId } = useParams();
     const navigate = useNavigate();
     const asset = assets.find((item) => item.id === assetId);
+    const { data: dashboardData } = useDashboard(auth.currentUser);
+
     const [price, setPrice] = useState<MarketPrice>();
     const [history, setHistory] = useState<PriceHistoryPoint[]>([]);
     const [watched, setWatched] = useState(false);
@@ -28,8 +39,13 @@ export default function AssetDetail() {
     useEffect(() => {
         if (!asset) return;
 
-        // Subscribe to real-time market updates
-        const unsubscribe = subscribeRealTimeMarketPrices((prices) => {
+        // Fetch initial watchlist state
+        void getWatchlist(auth.currentUser?.uid).then((list) => {
+            setWatched(list.assetIds.includes(asset.id));
+        });
+
+        // Real-time price updates & chart calculations
+        const unsubPrices = subscribeRealTimeMarketPrices((prices) => {
             const currentLive = prices[asset.id];
             if (currentLive) {
                 setPrice(currentLive);
@@ -37,70 +53,190 @@ export default function AssetDetail() {
             }
         }, 3000);
 
-        void getWatchlist(auth.currentUser?.uid).then((list) => {
+        // Real-time watchlist subscription
+        const unsubWatchlist = subscribeWatchlist(auth.currentUser?.uid, (list) => {
             setWatched(list.assetIds.includes(asset.id));
         });
 
-        return () => unsubscribe();
+        return () => {
+            unsubPrices();
+            unsubWatchlist();
+        };
     }, [asset]);
 
-    const meta = useMemo(() => detailMap[asset?.id ?? ""] ?? [{ label: "Sektor", value: asset?.category ?? "Investasi" }, { label: "Negara", value: "Global" }, { label: "Ticker", value: asset?.symbol ?? "-" }], [asset]);
+    const meta = useMemo(
+        () =>
+            detailMap[asset?.id ?? ""] ?? [
+                { label: "Sektor", value: asset?.category ?? "Investasi" },
+                { label: "Negara", value: "Global" },
+                { label: "Ticker", value: asset?.symbol ?? "-" },
+            ],
+        [asset],
+    );
 
-    if (!asset) return <PageFrame title="Aset tidak ditemukan" description="Kembali ke daftar market."><Link to="/market" className="text-cyan-300">Kembali ke Market</Link></PageFrame>;
+    // Check if current user owns this asset in portfolio holdings
+    const userHolding = useMemo<Holding | undefined>(() => {
+        if (!dashboardData?.holdings || !asset) return undefined;
+        return dashboardData.holdings.find(
+            (h) => (h.assetId ?? h.id) === asset.id || h.symbol === asset.symbol,
+        );
+    }, [dashboardData, asset]);
 
-    const updateWatchlist = () => void toggleWatchlist(auth.currentUser?.uid, asset.id).then((result) => setWatched(result.assetIds.includes(asset.id)));
+    if (!asset) {
+        return (
+            <PageFrame title="Aset tidak ditemukan" description="Kembali ke daftar market.">
+                <Link to="/market" className="text-cyan-300">
+                    Kembali ke Market
+                </Link>
+            </PageFrame>
+        );
+    }
+
+    const updateWatchlist = async () => {
+        const result = await toggleWatchlist(auth.currentUser?.uid, asset.id);
+        const isNowWatched = result.assetIds.includes(asset.id);
+        setWatched(isNowWatched);
+        if (isNowWatched) {
+            showToast(`✓ ${asset.name} ditambahkan ke Watchlist`, "success");
+        } else {
+            showToast(`✓ ${asset.name} dihapus dari Watchlist`, "info");
+        }
+    };
+
+    const isPositive = (price?.changePercent ?? 0) >= 0;
 
     return (
         <PageFrame title={asset.name} description={`${asset.symbol} · ${asset.category}`}>
+            {/* Header Controls */}
             <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-                <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-sm text-slate-400"><ArrowLeft size={17} /> Kembali</button>
+                <button
+                    onClick={() => navigate(-1)}
+                    className="flex items-center gap-2 text-sm text-slate-400 hover:text-white transition"
+                >
+                    <ArrowLeft size={17} /> Kembali
+                </button>
                 <div className="flex items-center gap-2">
-                    <button onClick={updateWatchlist} className={`rounded-full border px-3 py-2 text-sm ${watched ? "border-amber-400/25 bg-amber-400/10 text-amber-200" : "border-white/10 bg-[#101C2F] text-slate-300"}`}><Star size={15} className={watched ? "fill-current" : ""} /></button>
-                    <button className="rounded-full border border-white/10 bg-[#101C2F] px-3 py-2 text-sm text-slate-300"><Share2 size={15} /></button>
+                    <button
+                        onClick={() => void updateWatchlist()}
+                        className={`flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                            watched
+                                ? "border-amber-400/30 bg-amber-400/10 text-amber-300"
+                                : "border-white/10 bg-[#101C2F] text-slate-300 hover:border-white/20 hover:text-white"
+                        }`}
+                    >
+                        <Star size={16} className={watched ? "fill-amber-400 text-amber-400" : ""} />
+                        <span>{watched ? "Favorit" : "Tambah Favorit"}</span>
+                    </button>
+                    <button className="rounded-full border border-white/10 bg-[#101C2F] p-2.5 text-slate-300 hover:text-white">
+                        <Share2 size={16} />
+                    </button>
                 </div>
             </div>
+
             <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
+                {/* Main Content Area: Price & Chart */}
                 <div className="rounded-[2rem] border border-white/10 bg-[#101C2F] p-5 sm:p-6">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
-                            <p className="text-sm text-slate-400">Overview</p>
-                            <h2 className="mt-2 text-3xl font-semibold text-white">{formatRupiah(price?.price ?? 0)}</h2>
-                            <p className={price?.changePercent && price.changePercent < 0 ? "mt-2 text-rose-300" : "mt-2 text-emerald-300"}>{formatPercent(price?.changePercent ?? 0)} hari ini</p>
+                            <p className="text-xs text-slate-400">Harga Real-Time</p>
+                            <h2 className="mt-1 text-3xl font-bold text-white">
+                                {formatRupiah(price?.price ?? asset.basePrice)}
+                            </h2>
+                            <p
+                                className={`mt-2 inline-block rounded-md px-2.5 py-0.5 text-xs font-bold ${
+                                    isPositive
+                                        ? "text-emerald-400 bg-emerald-500/10 border border-emerald-500/20"
+                                        : "text-rose-400 bg-rose-500/10 border border-rose-500/20"
+                                }`}
+                            >
+                                {formatPercent(price?.changePercent ?? 0)} hari ini
+                            </p>
                         </div>
                         <div className="rounded-2xl border border-[#1F3557] bg-[#08111F] px-4 py-3 text-sm text-slate-300">
-                            <p className="text-slate-400">Volume</p>
-                            <p className="mt-1 font-semibold text-white">{formatRupiah(price?.price ? price.price * 100000 : 0)}</p>
+                            <p className="text-xs text-slate-400">Estimasi Volume</p>
+                            <p className="mt-1 font-semibold text-white">
+                                {formatRupiah((price?.price ?? asset.basePrice) * 100000)}
+                            </p>
                         </div>
                     </div>
+
+                    {/* Chart Container */}
                     <div className="mt-6 h-72 rounded-2xl border border-[#1F3557] bg-[#08111F] p-3">
-                        <ResponsiveContainer>
+                        <ResponsiveContainer width="100%" height="100%">
                             <AreaChart data={history}>
                                 <XAxis dataKey="label" tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={false} tickLine={false} />
-                                <Tooltip formatter={(value) => formatRupiah(Number(value))} contentStyle={{ background: "#08111F", border: "1px solid #1F3557" }} />
-                                <Area dataKey="value" stroke="#13C8FF" fill="#13C8FF" fillOpacity={0.16} />
+                                <Tooltip
+                                    formatter={(value) => [formatRupiah(Number(value)), "Harga"]}
+                                    contentStyle={{ background: "#08111F", border: "1px solid #1F3557", borderRadius: "12px" }}
+                                />
+                                <Area dataKey="value" stroke="#13C8FF" strokeWidth={2} fill="#13C8FF" fillOpacity={0.16} />
                             </AreaChart>
                         </ResponsiveContainer>
                     </div>
+
+                    {/* Asset Statistics Cards */}
                     <div className="mt-6 grid gap-4 md:grid-cols-3">
                         {[
-                            { label: "Market Cap", value: formatRupiah(price?.price ? price.price * 2500000 : 0) },
+                            { label: "Market Cap", value: formatRupiah((price?.price ?? asset.basePrice) * 2500000) },
                             { label: "Supply", value: asset.category === "kripto" ? "21.0M" : "Liquid" },
                             { label: "ATH", value: asset.currency === "USD" ? `$${asset.ath}` : formatRupiah(asset.ath) },
                         ].map((item) => (
                             <div key={item.label} className="rounded-2xl border border-[#1F3557] bg-[#08111F] p-4">
-                                <p className="text-sm text-slate-400">{item.label}</p>
-                                <p className="mt-2 font-semibold text-white">{item.value}</p>
+                                <p className="text-xs text-slate-400">{item.label}</p>
+                                <p className="mt-1 font-semibold text-white text-base">{item.value}</p>
                             </div>
                         ))}
                     </div>
+
                     <div className="mt-6 rounded-2xl border border-[#1F3557] bg-[#08111F] p-4">
                         <p className="text-sm font-semibold text-white">Deskripsi Aset</p>
-                        <p className="mt-2 text-sm leading-7 text-slate-400">{asset.name} adalah aset yang tersedia di pasar simulasi AsetKita dengan akses cepat, pemantauan harga, dan transaksi yang terintegrasi dengan dashboard Anda.</p>
+                        <p className="mt-2 text-sm leading-6 text-slate-400">
+                            {asset.name} ({asset.symbol}) adalah aset instrumen {asset.category} yang dapat Anda pantau di Watchlist dan transaksikan secara simulasi di platform AsetKita.
+                        </p>
                     </div>
                 </div>
+
+                {/* Sidebar Column: Ownership, Stats & Actions */}
                 <aside className="space-y-5">
+                    {/* User Holding Info Card (If user owns this asset) */}
+                    {userHolding && (
+                        <div className="rounded-[2rem] border border-emerald-500/30 bg-[#091a18] p-5 shadow-[0_0_30px_rgba(16,185,129,0.1)]">
+                            <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-wider">
+                                <Wallet size={16} />
+                                <span>Aset Di Portofolio Anda</span>
+                            </div>
+                            <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                                <div>
+                                    <p className="text-xs text-slate-400">Jumlah Dimiliki</p>
+                                    <b className="mt-1 block text-base font-bold text-white">
+                                        {Number(userHolding.quantity).toLocaleString("id-ID", { maximumFractionDigits: 4 })} {asset.unit}
+                                    </b>
+                                </div>
+                                <div>
+                                    <p className="text-xs text-slate-400">Nilai Saat Ini</p>
+                                    <b className="mt-1 block text-base font-bold text-emerald-400">
+                                        {formatRupiah(Number(userHolding.quantity) * (price?.price ?? asset.basePrice))}
+                                    </b>
+                                </div>
+                                <div>
+                                    <p className="text-xs text-slate-400">Rata-rata Beli</p>
+                                    <p className="mt-1 font-semibold text-slate-200">
+                                        {formatRupiah(Number(userHolding.averageBuy ?? price?.price ?? asset.basePrice))}
+                                    </p>
+                                </div>
+                                <div>
+                                    <p className="text-xs text-slate-400">Status Watchlist</p>
+                                    <p className="mt-1 font-semibold text-amber-400">
+                                        {watched ? "Dipantau ⭐" : "Tidak dipantau"}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Trade / Action Card */}
                     <div className="rounded-[2rem] border border-white/10 bg-[#101C2F] p-5">
-                        <h3 className="text-lg font-semibold text-white">Statistik</h3>
+                        <h3 className="text-lg font-semibold text-white">Transaksi & Statistik</h3>
                         <div className="mt-4 space-y-3 text-sm">
                             {meta.map((item) => (
                                 <div key={item.label} className="flex items-center justify-between border-b border-white/5 pb-2 last:border-none last:pb-0">
@@ -110,15 +246,29 @@ export default function AssetDetail() {
                             ))}
                         </div>
                         <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-                            <button onClick={() => setShowTrade(true)} className="flex-1 rounded-2xl bg-[#13C8FF] px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-[#30D6FF]">Beli</button>
-                            <button onClick={() => setShowTrade(true)} className="flex-1 rounded-2xl border border-[#1F3557] bg-transparent px-4 py-3 text-sm font-semibold text-slate-300">Jual</button>
+                            <button
+                                onClick={() => setShowTrade(true)}
+                                className="flex-1 rounded-2xl bg-[#13C8FF] px-4 py-3 text-sm font-bold text-slate-950 transition hover:bg-[#30D6FF] shadow-[0_0_20px_rgba(19,200,255,0.25)]"
+                            >
+                                Beli Aset
+                            </button>
+                            {userHolding && (
+                                <button
+                                    onClick={() => setShowTrade(true)}
+                                    className="flex-1 rounded-2xl border border-[#1F3557] bg-transparent px-4 py-3 text-sm font-semibold text-slate-300 hover:bg-white/5 hover:text-white transition"
+                                >
+                                    Jual Aset
+                                </button>
+                            )}
                         </div>
                     </div>
+
+                    {/* Recent Price History */}
                     <div className="rounded-[2rem] border border-white/10 bg-[#101C2F] p-5">
                         <h3 className="text-lg font-semibold text-white">Riwayat Harga</h3>
-                        <div className="mt-4 space-y-3 text-sm text-slate-400">
+                        <div className="mt-4 space-y-2.5 text-sm text-slate-400">
                             {history.slice(-4).reverse().map((item) => (
-                                <div key={`${item.label}-${item.value}`} className="flex items-center justify-between rounded-2xl border border-[#1F3557] bg-[#08111F] px-3 py-3">
+                                <div key={`${item.label}-${item.value}`} className="flex items-center justify-between rounded-xl border border-[#1F3557] bg-[#08111F] px-3.5 py-2.5">
                                     <span>{item.label}</span>
                                     <span className="font-semibold text-white">{formatRupiah(item.value)}</span>
                                 </div>
@@ -127,7 +277,16 @@ export default function AssetDetail() {
                     </div>
                 </aside>
             </div>
-            {showTrade && <TradeModal asset={asset} price={price?.price ?? 0} onClose={() => setShowTrade(false)} onDone={() => void getMarketPrices().then((result) => setPrice(result[asset.id]))} />}
+
+            {/* BUY / SELL Modal */}
+            {showTrade && (
+                <TradeModal
+                    asset={asset}
+                    price={price?.price ?? asset.basePrice}
+                    onClose={() => setShowTrade(false)}
+                    onDone={() => void getMarketPrices().then((result) => setPrice(result[asset.id]))}
+                />
+            )}
         </PageFrame>
     );
 }

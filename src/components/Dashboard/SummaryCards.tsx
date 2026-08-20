@@ -58,7 +58,7 @@ export default function SummaryCards({
                                 <Icon size={17} className="text-cyan-300" />
                             </div>
                         </div>
-                        <p className="mt-4 text-xl sm:text-2xl font-bold tracking-tight text-white whitespace-nowrap truncate">
+                        <p className="mt-4 text-lg sm:text-[1.35rem] xl:text-2xl font-bold tracking-tight text-white whitespace-nowrap">
                             {value}
                         </p>
                         <div className="mt-2 flex items-center justify-between">

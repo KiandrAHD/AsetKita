@@ -20,60 +20,60 @@ export default function Portfolio() {
             ) : (
                 <>
                     {/* Summary Cards Grid */}
-                    <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-                        <div className="rounded-2xl border border-white/10 bg-[#101b2a] p-4 sm:p-5 transition-all hover:border-white/20 hover:bg-[#132235]">
+                    <div className="mb-6 grid gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+                        <div className="rounded-2xl border border-white/10 bg-[#101b2a] p-3.5 sm:p-4 transition-all hover:border-white/20 hover:bg-[#132235]">
                             <div className="flex items-center justify-between text-slate-400">
                                 <span className="text-xs font-medium">Saldo Cash</span>
                                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-cyan-400/10">
                                     <Wallet size={15} className="text-cyan-400" />
                                 </div>
                             </div>
-                            <b className="mt-3 block text-base sm:text-lg 2xl:text-xl font-bold tracking-tight text-white whitespace-nowrap truncate">
+                            <b className="mt-2.5 block text-sm sm:text-base xl:text-[0.92rem] 2xl:text-lg font-bold tracking-tight text-white whitespace-nowrap">
                                 {formatRupiah(data.summary.balance)}
                             </b>
                             <p className="mt-1 text-xs text-slate-400 truncate">Siap diinvestasikan</p>
                         </div>
 
-                        <div className="rounded-2xl border border-white/10 bg-[#101b2a] p-4 sm:p-5 transition-all hover:border-white/20 hover:bg-[#132235]">
+                        <div className="rounded-2xl border border-white/10 bg-[#101b2a] p-3.5 sm:p-4 transition-all hover:border-white/20 hover:bg-[#132235]">
                             <div className="flex items-center justify-between text-slate-400">
                                 <span className="text-xs font-medium">Total Aset</span>
                                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-400/10">
                                     <Landmark size={15} className="text-emerald-400" />
                                 </div>
                             </div>
-                            <b className="mt-3 block text-base sm:text-lg 2xl:text-xl font-bold tracking-tight text-white whitespace-nowrap truncate">
+                            <b className="mt-2.5 block text-sm sm:text-base xl:text-[0.92rem] 2xl:text-lg font-bold tracking-tight text-white whitespace-nowrap">
                                 {formatRupiah(data.summary.totalAssets)}
                             </b>
                             <p className="mt-1 text-xs text-slate-400 truncate">Nilai pasar saat ini</p>
                         </div>
 
-                        <div className="rounded-2xl border border-white/10 bg-[#101b2a] p-4 sm:p-5 transition-all hover:border-white/20 hover:bg-[#132235]">
+                        <div className="rounded-2xl border border-white/10 bg-[#101b2a] p-3.5 sm:p-4 transition-all hover:border-white/20 hover:bg-[#132235]">
                             <div className="flex items-center justify-between text-slate-400">
                                 <span className="text-xs font-medium">Nilai Portofolio</span>
                                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-cyan-300/10">
                                     <TrendingUp size={15} className="text-cyan-300" />
                                 </div>
                             </div>
-                            <b className="mt-3 block text-base sm:text-lg 2xl:text-xl font-bold tracking-tight text-cyan-300 whitespace-nowrap truncate">
+                            <b className="mt-2.5 block text-sm sm:text-base xl:text-[0.92rem] 2xl:text-lg font-bold tracking-tight text-cyan-300 whitespace-nowrap">
                                 {formatRupiah(data.summary.portfolioValue)}
                             </b>
                             <p className="mt-1 text-xs text-slate-400 truncate">Saldo + Total Aset</p>
                         </div>
 
-                        <div className="rounded-2xl border border-white/10 bg-[#101b2a] p-4 sm:p-5 transition-all hover:border-white/20 hover:bg-[#132235]">
+                        <div className="rounded-2xl border border-white/10 bg-[#101b2a] p-3.5 sm:p-4 transition-all hover:border-white/20 hover:bg-[#132235]">
                             <div className="flex items-center justify-between text-slate-400">
                                 <span className="text-xs font-medium">Modal Investasi</span>
                                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-400/10">
                                     <PiggyBank size={15} className="text-indigo-400" />
                                 </div>
                             </div>
-                            <b className="mt-3 block text-base sm:text-lg 2xl:text-xl font-bold tracking-tight text-white whitespace-nowrap truncate">
+                            <b className="mt-2.5 block text-sm sm:text-base xl:text-[0.92rem] 2xl:text-lg font-bold tracking-tight text-white whitespace-nowrap">
                                 {formatRupiah(data.summary.modalInvestasi)}
                             </b>
                             <p className="mt-1 text-xs text-slate-400 truncate">Cost basis pembelian</p>
                         </div>
 
-                        <div className="rounded-2xl border border-white/10 bg-[#101b2a] p-4 sm:p-5 transition-all hover:border-white/20 hover:bg-[#132235]">
+                        <div className="rounded-2xl border border-white/10 bg-[#101b2a] p-3.5 sm:p-4 transition-all hover:border-white/20 hover:bg-[#132235]">
                             <div className="flex items-center justify-between text-slate-400">
                                 <span className="text-xs font-medium">Unrealized P/L</span>
                                 <div className={`flex h-7 w-7 items-center justify-center rounded-lg ${
@@ -86,7 +86,7 @@ export default function Portfolio() {
                                 </div>
                             </div>
                             <b
-                                className={`mt-3 block text-base sm:text-lg 2xl:text-xl font-bold tracking-tight whitespace-nowrap truncate ${
+                                className={`mt-2.5 block text-sm sm:text-base xl:text-[0.92rem] 2xl:text-lg font-bold tracking-tight whitespace-nowrap ${
                                     data.summary.unrealizedPnL >= 0 ? "text-emerald-400" : "text-rose-400"
                                 }`}
                             >
@@ -96,7 +96,7 @@ export default function Portfolio() {
                             <p className="mt-1 text-xs text-slate-400 truncate">Keuntungan / kerugian</p>
                         </div>
 
-                        <div className="rounded-2xl border border-white/10 bg-[#101b2a] p-4 sm:p-5 transition-all hover:border-white/20 hover:bg-[#132235]">
+                        <div className="rounded-2xl border border-white/10 bg-[#101b2a] p-3.5 sm:p-4 transition-all hover:border-white/20 hover:bg-[#132235]">
                             <div className="flex items-center justify-between text-slate-400">
                                 <span className="text-xs font-medium">Total Return</span>
                                 <div className={`flex h-7 w-7 items-center justify-center rounded-lg ${
@@ -109,7 +109,7 @@ export default function Portfolio() {
                                 </div>
                             </div>
                             <b
-                                className={`mt-3 block text-base sm:text-lg 2xl:text-xl font-bold tracking-tight whitespace-nowrap truncate ${
+                                className={`mt-2.5 block text-sm sm:text-base xl:text-[0.92rem] 2xl:text-lg font-bold tracking-tight whitespace-nowrap ${
                                     data.summary.returnPercent >= 0 ? "text-emerald-400" : "text-rose-400"
                                 }`}
                             >

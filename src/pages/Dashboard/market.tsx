@@ -7,11 +7,13 @@ import {
     getMarketPrices,
     getWatchlist,
     subscribeRealTimeMarketPrices,
+    subscribeWatchlist,
     toggleWatchlist,
 } from "@/services/marketService";
 import { auth } from "@/lib/firebase";
 import type { AssetCategory, MarketPrice } from "@/types/dashboard";
 import { formatPercent, formatRupiah } from "@/utils/formatters";
+import { showToast } from "@/components/Dashboard/Toast";
 
 export default function Market() {
     const [prices, setPrices] = useState<Record<string, MarketPrice>>({});
@@ -22,18 +24,26 @@ export default function Market() {
     const [lastUpdated, setLastUpdated] = useState<string>("Baru saja");
 
     useEffect(() => {
-        // Fetch watchlist once
+        // Fetch initial watchlist
         void getWatchlist(auth.currentUser?.uid).then((nextWatchlist) => {
             setWatchlist(nextWatchlist.assetIds);
         });
 
+        // Subscribe to watchlist state updates
+        const unsubWatchlist = subscribeWatchlist(auth.currentUser?.uid, (nextWatchlist) => {
+            setWatchlist(nextWatchlist.assetIds);
+        });
+
         // Subscribe to real-time prices (auto update every 3s)
-        const unsubscribe = subscribeRealTimeMarketPrices((nextPrices) => {
+        const unsubPrices = subscribeRealTimeMarketPrices((nextPrices) => {
             setPrices(nextPrices);
             setLastUpdated(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
         }, 3000);
 
-        return () => unsubscribe();
+        return () => {
+            unsubWatchlist();
+            unsubPrices();
+        };
     }, []);
 
     const handleManualRefresh = async () => {
@@ -44,6 +54,17 @@ export default function Market() {
         setIsRefreshing(false);
     };
 
+    const handleToggleWatchlist = async (assetId: string, assetName: string) => {
+        const isWatched = watchlist.includes(assetId);
+        const res = await toggleWatchlist(auth.currentUser?.uid, assetId);
+        setWatchlist(res.assetIds);
+        if (isWatched) {
+            showToast(`✓ ${assetName} dihapus dari Watchlist`, "info");
+        } else {
+            showToast(`✓ ${assetName} ditambahkan ke Watchlist`, "success");
+        }
+    };
+
     const rows = useMemo(
         () =>
             assets.filter(
@@ -51,7 +72,7 @@ export default function Market() {
                     (category === "all" || asset.category === category) &&
                     `${asset.name} ${asset.symbol}`
                         .toLowerCase()
-                        .includes(search.toLowerCase()),
+                        .includes(search.trim().toLowerCase()),
             ),
         [category, search],
     );
@@ -118,7 +139,7 @@ export default function Market() {
                     <span>Aset & Ticker</span>
                     <span>Harga Real-Time</span>
                     <span>Perubahan 24 Jam</span>
-                    <span className="hidden sm:block">Favorit</span>
+                    <span className="hidden sm:block text-center">Favorit</span>
                 </div>
                 {rows.map((asset) => {
                     const price = prices[asset.id];
@@ -140,7 +161,7 @@ export default function Market() {
                             </Link>
                             <div>
                                 <b className="text-sm font-bold text-slate-100">
-                                    {formatRupiah(price?.price ?? 0)}
+                                    {formatRupiah(price?.price ?? asset.basePrice)}
                                 </b>
                             </div>
                             <div>
@@ -154,17 +175,17 @@ export default function Market() {
                                     {formatPercent(price?.changePercent ?? 0)}
                                 </span>
                             </div>
-                            <button
-                                aria-label="Toggle favorit"
-                                onClick={() =>
-                                    void toggleWatchlist(auth.currentUser?.uid, asset.id).then(
-                                        (r) => setWatchlist(r.assetIds),
-                                    )
-                                }
-                                className={`hidden rounded-lg p-2 sm:block transition ${watched ? "text-amber-400 hover:text-amber-300" : "text-slate-500 hover:text-slate-300"}`}
-                            >
-                                <Star size={18} fill={watched ? "currentColor" : "none"} />
-                            </button>
+                            <div className="hidden sm:flex justify-center">
+                                <button
+                                    aria-label="Toggle favorit"
+                                    onClick={() => void handleToggleWatchlist(asset.id, asset.name)}
+                                    className={`rounded-lg p-2 transition ${
+                                        watched ? "text-amber-400 hover:text-amber-300" : "text-slate-500 hover:text-slate-300"
+                                    }`}
+                                >
+                                    <Star size={18} fill={watched ? "currentColor" : "none"} />
+                                </button>
+                            </div>
                         </div>
                     );
                 })}
