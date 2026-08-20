@@ -39,6 +39,8 @@ function mapAIError(error: unknown): Error {
         return new Error("Layanan AI sedang mencapai batas penggunaan. Silakan coba beberapa saat lagi.");
     if (code.includes("unavailable") || code.includes("deadline-exceeded") || message.includes("network") || message.includes("fetch"))
         return new Error("Tidak dapat terhubung ke AI. Periksa koneksi internet Anda.");
+    if (code.includes("not-found") || message.includes("not found") || message.includes("function"))
+        return new Error("Layanan AI belum ter-deploy ke Firebase project AsetKita. Deploy Cloud Functions lalu coba lagi.");
     if (code.includes("failed-precondition") || message.includes("configuration") || message.includes("model"))
         return new Error("Konfigurasi Gemini belum siap. Periksa Gemini API dan model di environment backend.");
     if (code.includes("invalid-argument"))
