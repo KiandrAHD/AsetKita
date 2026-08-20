@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { onAuthStateChanged, type User } from "firebase/auth";
 import {
     BookOpen,
     Bot,
@@ -13,13 +14,15 @@ import {
     X,
     MessageSquare,
     ChevronDown,
-    ChevronUp
+    ChevronUp,
+    LockKeyhole,
 } from "lucide-react";
 
 import { assets } from "@/data/assets";
 import { getMarketPrices } from "@/services/marketService";
 import { type ChatContext, type ChatMessage, getAIChatResponse } from "@/services/aiService";
 import { getDemoSession } from "@/services/demoService";
+import { auth } from "@/lib/firebase";
 
 interface AIChatbotProps {
     mode?: "floating" | "fullPage";
@@ -51,12 +54,26 @@ export default function AIChatbot({ mode = "floating" }: AIChatbotProps) {
     const [input, setInput] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [authReady, setAuthReady] = useState(false);
+    const [user, setUser] = useState<User | null>(auth.currentUser);
 
     const [pageContext, setPageContext] = useState("Dashboard");
     const [assetContext, setAssetContext] = useState<ChatContext["asset"]>(undefined);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const chatContainerRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => onAuthStateChanged(auth, (nextUser) => {
+        setUser(nextUser);
+        setAuthReady(true);
+    }), []);
+
+    const demoBlocked = getDemoSession()?.isDemo === true;
+    const accessMessage = authReady && !user
+        ? "Silakan masuk ke akun AsetKita untuk menggunakan AI."
+        : demoBlocked
+            ? "AI tidak tersedia untuk akun Demo. Gunakan akun AsetKita untuk mengakses AI & Belajar."
+            : null;
 
     // Auto-scroll to bottom
     useEffect(() => {
@@ -95,7 +112,7 @@ export default function AIChatbot({ mode = "floating" }: AIChatbotProps) {
             pageName = "AI & Belajar";
         }
 
-        setPageContext(pageName);
+        const pageContextTimer = window.setTimeout(() => setPageContext(pageName), 0);
 
         if (activeAsset) {
             getMarketPrices()
@@ -127,14 +144,24 @@ export default function AIChatbot({ mode = "floating" }: AIChatbotProps) {
                     });
                 });
         } else {
-            setAssetContext(undefined);
+            const assetContextTimer = window.setTimeout(() => setAssetContext(undefined), 0);
+            return () => {
+                window.clearTimeout(pageContextTimer);
+                window.clearTimeout(assetContextTimer);
+            };
         }
+
+        return () => window.clearTimeout(pageContextTimer);
     }, [location.pathname, assetId]);
 
     // Send a message
     const handleSend = async (textToSend: string) => {
         const trimmedText = textToSend.trim();
         if (!trimmedText || isLoading) return;
+        if (!authReady || accessMessage) {
+            setError(accessMessage ?? "Silakan masuk ke akun AsetKita untuk menggunakan AI.");
+            return;
+        }
         if (trimmedText.length > 4000) {
             setError("Pesan terlalu panjang. Batasi pertanyaan hingga 4.000 karakter.");
             return;
@@ -327,7 +354,27 @@ export default function AIChatbot({ mode = "floating" }: AIChatbotProps) {
                 ref={chatContainerRef}
                 className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-white/10"
             >
-                {messages.length === 0 ? (
+                {accessMessage ? (
+                    <div className="flex h-full min-h-64 flex-col items-center justify-center px-5 text-center">
+                        <LockKeyhole className="mb-4 text-amber-300" size={30} />
+                        <h5 className="font-semibold text-white">
+                            {demoBlocked ? "AI tidak tersedia untuk akun Demo" : "Masuk untuk menggunakan AI"}
+                        </h5>
+                        <p className="mt-2 max-w-sm text-sm leading-6 text-slate-400">
+                            {demoBlocked
+                                ? "Gunakan akun AsetKita untuk mengakses AI & Belajar."
+                                : "Silakan masuk ke akun AsetKita untuk menggunakan AI."}
+                        </p>
+                        <div className="mt-5 flex gap-2">
+                            <button onClick={() => navigate("/login")} className="rounded-lg bg-cyan-400 px-3 py-2 text-xs font-semibold text-slate-950">
+                                Masuk
+                            </button>
+                            <button onClick={() => navigate("/register")} className="rounded-lg border border-cyan-400/40 px-3 py-2 text-xs font-semibold text-cyan-300">
+                                Buat Akun
+                            </button>
+                        </div>
+                    </div>
+                ) : messages.length === 0 ? (
                     /* Empty State */
                     <div className="flex h-full flex-col justify-center py-6">
                         <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan-400/10 text-cyan-400">
@@ -419,7 +466,7 @@ export default function AIChatbot({ mode = "floating" }: AIChatbotProps) {
                             <button
                                 key={idx}
                                 onClick={() => handleSend(action.prompt)}
-                                disabled={isLoading}
+                                disabled={isLoading || !authReady || Boolean(accessMessage)}
                                 className="flex items-center gap-1.5 whitespace-nowrap rounded-full border border-cyan-500/20 bg-cyan-950/20 hover:bg-cyan-500/10 px-3 py-1.5 text-xs text-cyan-300 transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <Icon size={12} />
@@ -444,13 +491,13 @@ export default function AIChatbot({ mode = "floating" }: AIChatbotProps) {
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={handleKeyDown}
                         placeholder={isLoading ? "AI sedang mengetik..." : "Tanyakan sesuatu tentang investasi..."}
-                        disabled={isLoading}
+                        disabled={isLoading || !authReady || Boolean(accessMessage)}
                         rows={1}
                         className="flex-1 max-h-24 min-h-[40px] resize-none rounded-xl border border-[#1F3557] bg-[#08111F] px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:border-cyan-400 focus:outline-none transition disabled:opacity-50"
                     />
                     <button
                         type="submit"
-                        disabled={!input.trim() || isLoading}
+                        disabled={!input.trim() || isLoading || !authReady || Boolean(accessMessage)}
                         className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-400 text-slate-950 hover:bg-cyan-300 disabled:bg-[#1E3351] disabled:text-slate-500 transition duration-200"
                     >
                         <Send size={16} />
