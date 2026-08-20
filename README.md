@@ -73,3 +73,46 @@ export default defineConfig([
 
 ```
 co
+
+## AI Setup
+
+AsetKita AI menggunakan Gemini Developer API melalui Firebase Cloud Functions. API key
+tidak pernah dikirim ke React/Vite frontend.
+
+1. Buat Gemini API key baru melalui Google AI Studio. Jangan gunakan key yang pernah terekspos.
+2. Simpan key sebagai Firebase Secret Manager secret:
+
+```bash
+firebase functions:secrets:set GEMINI_API_KEY
+```
+
+3. Gunakan model yang stabil melalui parameter Functions:
+
+```env
+GEMINI_MODEL=gemini-3.1-flash-lite
+```
+
+4. Instal dependency dan build Functions:
+
+```bash
+cd functions
+npm install
+npm run build
+```
+
+5. Deploy function setelah secret tersedia:
+
+```bash
+firebase deploy --only functions
+```
+
+6. Jalankan frontend dari root project:
+
+```bash
+npm install
+npm run dev
+```
+
+User harus login dengan akun terdaftar untuk menggunakan AI. Akun demo diblokir sebelum
+request dikirim. Conversation history dibatasi dan diteruskan ke backend untuk percakapan
+multi-turn.

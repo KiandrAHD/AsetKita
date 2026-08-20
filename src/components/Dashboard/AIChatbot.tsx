@@ -54,6 +54,7 @@ export default function AIChatbot({ mode = "floating" }: AIChatbotProps) {
     const [input, setInput] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [failedConversation, setFailedConversation] = useState<ChatMessage[] | null>(null);
     const [authReady, setAuthReady] = useState(false);
     const [user, setUser] = useState<User | null>(auth.currentUser);
 
@@ -172,6 +173,7 @@ export default function AIChatbot({ mode = "floating" }: AIChatbotProps) {
         }
 
         setError(null);
+        setFailedConversation(null);
         const userMsg: ChatMessage = { role: "user", content: trimmedText };
         const updatedMessages = [...messages, userMsg];
         setMessages(updatedMessages);
@@ -189,9 +191,29 @@ export default function AIChatbot({ mode = "floating" }: AIChatbotProps) {
             setMessages((prev) => [...prev, { role: "model", content: responseText }]);
         } catch (err: unknown) {
             console.error("AI request failed", err);
+            setFailedConversation(updatedMessages);
             setError(getDemoSession()?.isDemo
                 ? "Fitur AI hanya tersedia untuk pengguna yang sudah masuk dengan akun AsetKita."
                 : err instanceof Error ? err.message : "AI sedang mengalami gangguan. Silakan coba lagi.");
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleRetry = async () => {
+        if (!failedConversation || isLoading || accessMessage) return;
+        setError(null);
+        setIsLoading(true);
+        try {
+            const responseText = await getAIChatResponse(failedConversation, {
+                page: pageContext,
+                asset: assetContext,
+            });
+            setMessages((prev) => [...prev, { role: "model", content: responseText }]);
+            setFailedConversation(null);
+        } catch (err: unknown) {
+            console.error("AI retry failed", err);
+            setError(err instanceof Error ? err.message : "AI sedang mengalami gangguan. Silakan coba lagi.");
         } finally {
             setIsLoading(false);
         }
@@ -445,7 +467,7 @@ export default function AIChatbot({ mode = "floating" }: AIChatbotProps) {
                                     </div>
                                 )}
                                 <button
-                                    onClick={() => handleSend(messages[messages.length - 1]?.content || "")}
+                                    onClick={() => void handleRetry()}
                                     className="mt-2 text-cyan-400 font-semibold hover:underline"
                                 >
                                     Coba Lagi

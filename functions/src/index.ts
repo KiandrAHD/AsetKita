@@ -3,7 +3,7 @@ import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { FieldValue, Timestamp, getFirestore } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { defineSecret } from "firebase-functions/params";
+import { defineSecret, defineString } from "firebase-functions/params";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { Resend } from "resend";
 
@@ -12,6 +12,8 @@ const db = getFirestore();
 const adminAuth = getAuth();
 const resendKey = defineSecret("RESEND_API_KEY");
 const otpFromEmail = defineSecret("OTP_FROM_EMAIL");
+const geminiApiKey = defineSecret("GEMINI_API_KEY");
+const geminiModel = defineString("GEMINI_MODEL", { default: "gemini-3.1-flash-lite" });
 const REGION = "asia-southeast2";
 const TTL_MINUTES = 10;
 const RESEND_SECONDS = 60;
@@ -133,4 +135,91 @@ export const toggleWatchlist = onCall({ region: REGION }, async (request) => { c
 export const updateProfile = onCall({ region: REGION }, async (request) => { const uid = mustAuth(request); const { namaPanggilan, nomorHP } = request.data as { namaPanggilan?: unknown; nomorHP?: unknown }; if (!validName(namaPanggilan) || !validPhone(nomorHP)) throw new HttpsError("invalid-argument", "Profil tidak valid."); const name = namaPanggilan.trim(); await db.collection("users").doc(uid).update({ namaPanggilan: name, nomorHP, updatedAt: FieldValue.serverTimestamp() }); await adminAuth.updateUser(uid, { displayName: name }); return { success: true }; });
 export const updateSettings = onCall({ region: REGION }, async (request) => { const uid = mustAuth(request); const keys = ["marketAlerts", "aiInsights", "systemNotifications", "emailDigest", "analytics", "personalizedRecommendations", "portfolioSharing"]; const data = request.data as Record<string, unknown>; if (!keys.every((key) => typeof data[key] === "boolean")) fail("Pengaturan tidak valid."); await db.collection("settings").doc(uid).set(Object.fromEntries(keys.map((key) => [key, data[key]])), { merge: true }); return { success: true }; });
 export const deleteAccount = onCall({ region: REGION }, async (request) => { const uid = mustAuth(request); const portfolio = db.collection("portfolios").doc(`${uid}_utama`); await Promise.all([db.recursiveDelete(portfolio), db.collection("users").doc(uid).delete(), db.collection("wallets").doc(uid).delete(), db.collection("watchlists").doc(uid).delete(), db.collection("settings").doc(uid).delete()]); const transactions = await db.collection("transactions").where("uid", "==", uid).get(); const batch = db.batch(); transactions.docs.forEach((row) => batch.delete(row.ref)); await batch.commit(); await adminAuth.deleteUser(uid); return { success: true }; });
+
+type AIMessage = { role: "user" | "model"; content: string };
+type AIContext = { page?: unknown; section?: unknown; userName?: unknown; asset?: Record<string, unknown> };
+const AI_MAX_MESSAGES = 20;
+const AI_MAX_MESSAGE_LENGTH = 4000;
+const isAIMessage = (value: unknown): value is AIMessage => {
+    if (typeof value !== "object" || value === null) return false;
+    const message = value as Record<string, unknown>;
+    return (message.role === "user" || message.role === "model") &&
+        typeof message.content === "string" &&
+        message.content.trim().length > 0 &&
+        message.content.length <= AI_MAX_MESSAGE_LENGTH;
+};
+const AI_SYSTEM_INSTRUCTION = `Kamu adalah "AsetKita AI Assistant", AI Investment Learning Assistant untuk AsetKita, platform edukasi dan simulasi investasi.
+Gunakan Bahasa Indonesia secara default. Bersikap natural, jelas, ramah, profesional, dan mudah dipahami pemula.
+Jelaskan saham, cryptocurrency, logam mulia, investasi, portofolio, transaksi, profit/loss, risiko, market, dan istilah finansial secara edukatif.
+Gunakan bullet points, numbering, contoh sederhana, atau tabel sederhana jika membantu.
+Jangan menjanjikan profit, mengatakan aset pasti naik atau turun, memberi jaminan, atau mendorong pembelian maupun penjualan aset tertentu.
+Jika ditanya apakah harus membeli aset, jelaskan faktor pertimbangan seperti tujuan, kondisi keuangan, toleransi risiko, jangka waktu, dan diversifikasi tanpa memberi keputusan personal yang definitif.
+Bedakan data simulasi AsetKita dari data pasar nyata. Jangan mengaku memiliki data real-time jika tidak diberikan dalam konteks dan jangan mengarang data pengguna.
+Jika data portfolio atau saldo tidak ada di konteks, katakan bahwa data tersebut belum tersedia.
+Jawaban harus generatif dan menjawab pertanyaan pengguna berdasarkan percakapan, bukan berdasarkan jawaban statis.`;
+
+export const chatWithAI = onCall({ region: REGION, secrets: [geminiApiKey] }, async (request) => {
+    const uid = mustAuth(request);
+    const payload = request.data as { message?: unknown; history?: unknown; context?: unknown } | undefined;
+    const message = payload?.message;
+    const history = payload?.history;
+    if (typeof message !== "string" || !message.trim() || message.length > AI_MAX_MESSAGE_LENGTH) {
+        throw new HttpsError("invalid-argument", "Pertanyaan tidak valid.");
+    }
+    if (!Array.isArray(history) || history.length >= AI_MAX_MESSAGES || !history.every(isAIMessage)) {
+        throw new HttpsError("invalid-argument", "Riwayat percakapan tidak valid.");
+    }
+    if (history.length > 0 && history[0].role !== "user") {
+        throw new HttpsError("invalid-argument", "Riwayat percakapan tidak valid.");
+    }
+    const context = payload?.context as AIContext | undefined;
+    if (JSON.stringify(context ?? {}).length > 6000) {
+        throw new HttpsError("invalid-argument", "Konteks AI terlalu panjang.");
+    }
+
+    let apiKey = "";
+    try {
+        apiKey = geminiApiKey.value();
+    } catch {
+        throw new HttpsError("failed-precondition", "Konfigurasi Gemini belum siap.");
+    }
+    if (!apiKey) throw new HttpsError("failed-precondition", "Konfigurasi Gemini belum siap.");
+
+    const contextInstruction = [
+        context?.page ? `Halaman: ${String(context.page)}` : "",
+        context?.section ? `Bagian: ${String(context.section)}` : "",
+        context?.userName ? `Nama pengguna: ${String(context.userName)}` : "",
+        context?.asset ? `Data aset simulasi AsetKita: ${JSON.stringify(context.asset)}` : "",
+    ].filter(Boolean).join("\n");
+    const contents = [
+        ...history.map((item) => ({ role: item.role, parts: [{ text: item.content }] })),
+        { role: "user" as const, parts: [{ text: contextInstruction ? `${contextInstruction}\n\nPertanyaan pengguna: ${message}` : message }] },
+    ];
+
+    console.info("AI request started", { uid, model: geminiModel.value(), messageCount: contents.length });
+    try {
+        const { GoogleGenAI } = await import("@google/genai");
+        const ai = new GoogleGenAI({ apiKey });
+        const response = await ai.models.generateContent({
+            model: geminiModel.value(),
+            contents,
+            config: {
+                systemInstruction: AI_SYSTEM_INSTRUCTION,
+                temperature: 0.7,
+                maxOutputTokens: 2048,
+            },
+        });
+        const text = response.text?.trim();
+        if (!text) throw new Error("empty_response");
+        console.info("AI request completed", { uid, model: geminiModel.value(), status: "success" });
+        return { success: true, message: text, model: geminiModel.value() };
+    } catch (error: unknown) {
+        const status = typeof error === "object" && error !== null && "status" in error ? Number(error.status) : 0;
+        const category = status === 401 || status === 403 ? "configuration" : status === 429 ? "quota" : "provider";
+        console.error("AI request failed", { uid, model: geminiModel.value(), category });
+        if (status === 401 || status === 403) throw new HttpsError("failed-precondition", "Konfigurasi Gemini belum siap.");
+        if (status === 429) throw new HttpsError("resource-exhausted", "AI sedang menerima banyak permintaan.");
+        throw new HttpsError("internal", "Layanan AI sedang mengalami gangguan.");
+    }
+});
 
