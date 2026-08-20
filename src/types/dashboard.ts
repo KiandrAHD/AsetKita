@@ -80,6 +80,9 @@ export type DashboardSummary = {
     balance: number;
     totalAssets: number;
     portfolioValue: number;
+    modalInvestasi: number;
+    unrealizedPnL: number;
+    returnPercent: number;
     financialScore: number;
 };
 export type ChartPoint = { label: string; value: number };

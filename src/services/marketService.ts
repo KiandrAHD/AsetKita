@@ -359,8 +359,15 @@ export async function trade(
             throw new Error("Holding tidak mencukupi.");
         const holdings = [...state.holdings];
         if (side === "buy") {
-            if (current) current.quantity += quantity;
-            else
+            if (current) {
+                const oldQty = Number(current.quantity) || 0;
+                const oldAvg = Number(current.averageBuy ?? current.price) || price;
+                const newQty = oldQty + quantity;
+                const newAvg = (oldQty * oldAvg + total) / newQty;
+                current.quantity = newQty;
+                current.averageBuy = newAvg;
+                current.price = price;
+            } else {
                 holdings.push({
                     id: asset.id,
                     assetId: asset.id,
@@ -372,9 +379,13 @@ export async function trade(
                     changePercent: 0,
                     color: asset.color,
                 });
+            }
         } else if (current) {
             current.quantity -= quantity;
-            if (current.quantity <= 0) holdings.splice(holdings.indexOf(current), 1);
+            if (current.quantity <= 0) {
+                const idx = holdings.findIndex((h) => (h.assetId ?? h.id) === asset.id);
+                if (idx !== -1) holdings.splice(idx, 1);
+            }
         }
         const transaction: Transaction = {
             id: `demo-${Date.now()}`,
@@ -422,7 +433,9 @@ export async function trade(
 
         if (side === "buy") {
             if (balance < total) throw new Error("Saldo tidak mencukupi.");
-            const averageBuy = ((Number(holdingSnap.data()?.averageBuy ?? 0) * oldQuantity) + total) / (oldQuantity + quantity);
+            const oldAvg = Number(holdingSnap.data()?.averageBuy ?? holdingSnap.data()?.currentPrice ?? currentPrice);
+            const newQty = oldQuantity + quantity;
+            const newAvg = oldQuantity > 0 ? ((oldQuantity * oldAvg) + total) / newQty : currentPrice;
             
             tx.set(walletRef, { 
                 uid, 
@@ -439,8 +452,8 @@ export async function trade(
                 assetId: asset.id, 
                 symbol: asset.symbol, 
                 name: asset.name, 
-                quantity: oldQuantity + quantity, 
-                averageBuy, 
+                quantity: newQty, 
+                averageBuy: newAvg, 
                 currentPrice, 
                 updatedAt: serverTimestamp() 
             }, { merge: true });
@@ -458,7 +471,7 @@ export async function trade(
                 updatedAt: serverTimestamp() 
             }, { merge: true });
             
-            if (oldQuantity === quantity) {
+            if (oldQuantity <= quantity) {
                 tx.delete(holdingRef);
             } else {
                 tx.update(holdingRef, { 

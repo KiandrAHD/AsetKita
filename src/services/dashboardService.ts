@@ -3,40 +3,155 @@ import {
     doc,
     getDoc,
     getDocs,
-    limit,
-    query,
-    where,
 } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
-import { demoState, getDemoSession } from "@/services/demoService";
+import { demoState, getDemoSession, saveDemoSession } from "@/services/demoService";
 import { getMarketPrices } from "@/services/marketService";
 import { getUserCloudBalance } from "@/services/walletService";
-import type { Allocation, DashboardData, Holding } from "@/types/dashboard";
-
-const months = [
-    "Jan",
-    "Feb",
-    "Mar",
-    "Apr",
-    "Mei",
-    "Jun",
-    "Jul",
-    "Agu",
-    "Sep",
-    "Okt",
-    "Nov",
-    "Des",
-];
+import { assets } from "@/data/assets";
+import type { Allocation, ChartPoint, DashboardData, Holding } from "@/types/dashboard";
 
 const enrich = (
     holdings: Holding[],
     prices: Record<string, { price: number; changePercent: number }>,
-) =>
-    holdings.map((item) => ({
-        ...item,
-        price: prices[item.assetId ?? item.id]?.price ?? item.price,
-        changePercent: prices[item.assetId ?? item.id]?.changePercent ?? 0,
-    }));
+): Holding[] =>
+    holdings
+        .filter((item) => Number(item.quantity) > 0)
+        .map((item) => {
+            const assetId = item.assetId ?? item.id;
+            const asset = assets.find((a) => a.id === assetId || a.symbol === item.symbol);
+            const livePrice = prices[assetId]?.price ?? item.price;
+            const marketChange = prices[assetId]?.changePercent ?? item.changePercent ?? 0;
+            const averageBuy = Number(item.averageBuy) > 0 ? Number(item.averageBuy) : livePrice;
+            return {
+                ...item,
+                assetId,
+                price: livePrice,
+                averageBuy,
+                changePercent: marketChange,
+                color: item.color || asset?.color || "#22d3ee",
+            };
+        });
+
+function buildSummary(balance: number, holdings: Holding[]) {
+    const totalAssets = holdings.reduce(
+        (sum, item) => sum + Number(item.quantity) * Number(item.price),
+        0,
+    );
+    const modalInvestasi = holdings.reduce(
+        (sum, item) => sum + Number(item.quantity) * Number(item.averageBuy ?? item.price),
+        0,
+    );
+    const portfolioValue = balance + totalAssets;
+    const unrealizedPnL = totalAssets - modalInvestasi;
+    const returnPercent = modalInvestasi > 0 ? (unrealizedPnL / modalInvestasi) * 100 : 0;
+
+    let score = 50;
+    if (balance > 0) score += 15;
+    if (totalAssets > 0) score += 20;
+    if (holdings.length >= 2) score += 10;
+    if (unrealizedPnL > 0) score += 5;
+    const financialScore = Math.min(100, Math.max(0, score));
+
+    return {
+        balance,
+        totalAssets,
+        portfolioValue,
+        modalInvestasi,
+        unrealizedPnL,
+        returnPercent: parseFloat(returnPercent.toFixed(2)),
+        financialScore,
+    };
+}
+
+function buildAllocation(holdings: Holding[]): Allocation[] {
+    if (!holdings.length) return [];
+
+    const categoryTotals: Record<string, { value: number; label: string; color: string }> = {
+        saham: { value: 0, label: "Saham", color: "#22d3ee" },
+        kripto: { value: 0, label: "Kripto", color: "#f59e0b" },
+        logam: { value: 0, label: "Logam Mulia", color: "#eab308" },
+    };
+
+    let totalAssetsVal = 0;
+    for (const h of holdings) {
+        const asset = assets.find((a) => a.id === (h.assetId ?? h.id) || a.symbol === h.symbol);
+        const catKey = asset?.category ?? "saham";
+        const val = Number(h.quantity) * Number(h.price);
+        if (categoryTotals[catKey]) {
+            categoryTotals[catKey].value += val;
+        } else {
+            categoryTotals[catKey] = { value: val, label: catKey.toUpperCase(), color: "#34d399" };
+        }
+        totalAssetsVal += val;
+    }
+
+    if (totalAssetsVal <= 0) return [];
+
+    const result: Allocation[] = Object.values(categoryTotals)
+        .filter((cat) => cat.value > 0)
+        .map((cat) => ({
+            name: cat.label,
+            value: Math.round((cat.value / totalAssetsVal) * 100),
+            color: cat.color,
+        }));
+
+    if (result.length > 0) {
+        const sum = result.reduce((s, item) => s + item.value, 0);
+        if (sum !== 100 && sum > 0) {
+            result[0].value += (100 - sum);
+        }
+    }
+
+    return result;
+}
+
+function buildChart(keyId: string, portfolioValue: number, holdingsCount: number): ChartPoint[] {
+    if (holdingsCount === 0) return [];
+
+    const storageKey = `asetkita-chart-${keyId}`;
+    let history: ChartPoint[] = [];
+
+    try {
+        const cached = localStorage.getItem(storageKey);
+        if (cached) {
+            history = JSON.parse(cached);
+        }
+    } catch {}
+
+    const now = new Date();
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+    const currentLabel = monthNames[now.getMonth()];
+
+    if (!history.length) {
+        // Build 6 initial dynamic historical progression points leading to portfolioValue
+        const startMonthIdx = (now.getMonth() - 5 + 12) % 12;
+        for (let i = 0; i < 6; i++) {
+            const idx = (startMonthIdx + i) % 12;
+            const factor = 0.75 + (i * 0.05);
+            history.push({
+                label: monthNames[idx],
+                value: Math.round(portfolioValue * factor),
+            });
+        }
+        history[history.length - 1].value = portfolioValue;
+    } else {
+        // Update or append current point
+        const last = history[history.length - 1];
+        if (last && last.label === currentLabel) {
+            last.value = portfolioValue;
+        } else {
+            history.push({ label: currentLabel, value: portfolioValue });
+            if (history.length > 12) history.shift();
+        }
+    }
+
+    try {
+        localStorage.setItem(storageKey, JSON.stringify(history));
+    } catch {}
+
+    return history;
+}
 
 export async function getDashboardData(uid?: string): Promise<DashboardData> {
     const prices = await getMarketPrices();
@@ -45,30 +160,10 @@ export async function getDashboardData(uid?: string): Promise<DashboardData> {
     if (session?.isDemo) {
         const state = demoState();
         const holdings = enrich(state.holdings, prices);
-        const total = holdings.reduce(
-            (sum, item) => sum + item.quantity * item.price,
-            0,
-        );
-        const totalAssets = holdings.reduce(
-            (sum, item) => sum + item.quantity * item.price,
-            0,
-        );
-        const allocation: Allocation[] = holdings.map((item) => ({
-            name: item.symbol,
-            value: total
-                ? Math.round(((item.quantity * item.price) / total) * 100)
-                : 0,
-            color: item.color,
-        }));
-        if (state.balance)
-            allocation.push({
-                name: "Saldo",
-                value: Math.max(
-                    0,
-                    100 - allocation.reduce((sum, item) => sum + item.value, 0),
-                ),
-                color: "#64748b",
-            });
+        const summary = buildSummary(state.balance, holdings);
+        const allocation = buildAllocation(holdings);
+        const chart = buildChart("demo", summary.portfolioValue, holdings.length);
+
         return {
             mode: "demo",
             profile: {
@@ -76,28 +171,19 @@ export async function getDashboardData(uid?: string): Promise<DashboardData> {
                 name: session?.nickname ?? "Investor Demo",
                 email: session?.email,
                 phone: session?.nomorHP,
-                financialScore: 85,
+                financialScore: summary.financialScore,
             },
-            summary: {
-                balance: state.balance,
-                totalAssets: state.balance + totalAssets,
-                portfolioValue: total,
-                financialScore: 0,
-            },
+            summary,
             holdings,
             allocation,
-            chart: holdings.length
-                ? months.map((label, i) => ({
-                    label,
-                    value: Math.round(total * (0.9 + i * 0.01)),
-                }))
-                : [],
+            chart,
         };
     }
 
     if (!uid) {
         const email = session?.email ?? auth.currentUser?.email ?? undefined;
         const cloudBalance = await getUserCloudBalance(null, email);
+        const summary = buildSummary(cloudBalance, []);
         return {
             mode: "member",
             profile: {
@@ -105,19 +191,15 @@ export async function getDashboardData(uid?: string): Promise<DashboardData> {
                 name: session?.nickname ?? auth.currentUser?.displayName ?? "Investor",
                 email,
                 phone: session?.nomorHP,
-                financialScore: 85,
+                financialScore: summary.financialScore,
             },
-            summary: {
-                balance: cloudBalance,
-                totalAssets: 0,
-                portfolioValue: cloudBalance,
-                financialScore: 85,
-            },
+            summary,
             holdings: [],
             allocation: [],
             chart: [],
         };
     }
+
     try {
         let profile: any = {};
         try {
@@ -128,6 +210,7 @@ export async function getDashboardData(uid?: string): Promise<DashboardData> {
         } catch (err) {
             console.warn("Failed to load user profile document:", err);
         }
+
         let holdings: Holding[] = [];
         try {
             const rows = await getDocs(collection(db, "portfolios", `${uid}_utama`, "holdings"));
@@ -141,7 +224,7 @@ export async function getDashboardData(uid?: string): Promise<DashboardData> {
                         name: String(d.name),
                         quantity: Number(d.quantity),
                         price: Number(d.currentPrice ?? 0),
-                        averageBuy: Number(d.averageBuy ?? 0),
+                        averageBuy: Number(d.averageBuy ?? d.currentPrice ?? 0),
                         changePercent: 0,
                         color: ["#22d3ee", "#34d399", "#818cf8"][index % 3],
                     };
@@ -152,10 +235,6 @@ export async function getDashboardData(uid?: string): Promise<DashboardData> {
             holdings = [];
         }
 
-        const totalAssets = holdings.reduce(
-            (sum, item) => sum + item.quantity * item.price,
-            0,
-        );
         const email = (profile.email as string | undefined) ?? session?.email ?? auth.currentUser?.email;
         const balance = await getUserCloudBalance(uid, email);
 
@@ -164,25 +243,9 @@ export async function getDashboardData(uid?: string): Promise<DashboardData> {
         }
 
         const name = String(profile.namaPanggilan ?? session?.nickname ?? auth.currentUser?.displayName ?? "Investor");
-
-        const allocation: Allocation[] = holdings.map((h) => ({
-            name: h.symbol,
-            value: totalAssets
-                ? Math.round(((h.quantity * h.price) / totalAssets) * 100)
-                : 0,
-            color: h.color,
-        }));
-
-        if (balance) {
-            allocation.push({
-                name: "Saldo",
-                value: Math.max(
-                    0,
-                    100 - allocation.reduce((sum, item) => sum + item.value, 0),
-                ),
-                color: "#64748b",
-            });
-        }
+        const summary = buildSummary(balance, holdings);
+        const allocation = buildAllocation(holdings);
+        const chart = buildChart(uid, summary.portfolioValue, holdings.length);
 
         return {
             mode: "member",
@@ -193,26 +256,17 @@ export async function getDashboardData(uid?: string): Promise<DashboardData> {
                 phone: (profile.nomorHP as string | undefined) ?? session?.nomorHP ?? undefined,
                 joinedAt: typeof profile.createdAt?.toDate === "function" ? profile.createdAt.toDate() : (profile.createdAt instanceof Date ? profile.createdAt : undefined),
                 lastLogin: typeof profile.lastLogin?.toDate === "function" ? profile.lastLogin.toDate() : (profile.lastLogin instanceof Date ? profile.lastLogin : undefined),
-                financialScore: Number(profile.financialScore ?? 85),
+                financialScore: summary.financialScore,
             },
-            summary: {
-                balance,
-                totalAssets: balance + totalAssets,
-                portfolioValue: totalAssets,
-                financialScore: Number(profile.financialScore ?? 85),
-            },
+            summary,
             holdings,
             allocation,
-            chart: holdings.length
-                ? months.map((label, i) => ({
-                    label,
-                    value: Math.round(totalAssets * (0.9 + i * 0.01)),
-                }))
-                : [],
+            chart,
         };
     } catch {
         const email = session?.email ?? auth.currentUser?.email ?? undefined;
         const balance = await getUserCloudBalance(uid, email);
+        const summary = buildSummary(balance, []);
         return {
             mode: "member",
             profile: {
@@ -220,14 +274,9 @@ export async function getDashboardData(uid?: string): Promise<DashboardData> {
                 name: session?.nickname ?? auth.currentUser?.displayName ?? "Investor",
                 email,
                 phone: session?.nomorHP,
-                financialScore: 85,
+                financialScore: summary.financialScore,
             },
-            summary: {
-                balance,
-                totalAssets: balance,
-                portfolioValue: 0,
-                financialScore: 85,
-            },
+            summary,
             holdings: [],
             allocation: [],
             chart: [],
