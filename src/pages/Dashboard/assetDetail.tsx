@@ -14,7 +14,7 @@ import {
     toggleWatchlist,
 } from "@/services/marketService";
 import { auth } from "@/lib/firebase";
-import type { Holding, MarketPrice, PriceHistoryPoint } from "@/types/dashboard";
+import type { Holding, MarketPrice, PriceHistoryPoint, TimeFrame } from "@/types/dashboard";
 import { formatPercent, formatRupiah } from "@/utils/formatters";
 import { showToast } from "@/components/Dashboard/Toast";
 import { useDashboard } from "@/hooks/useDashboard";
@@ -25,6 +25,15 @@ const detailMap: Record<string, { label: string; value: string }[]> = {
     xau: [{ label: "Purity", value: ".999" }, { label: "Unit", value: "oz" }, { label: "Negara Produksi", value: "Australia" }],
 };
 
+const timeframes: { id: TimeFrame; label: string }[] = [
+    { id: "1D", label: "Hari Ini" },
+    { id: "1W", label: "1 M" },
+    { id: "1M", label: "1 B" },
+    { id: "1Y", label: "1 T" },
+    { id: "10Y", label: "10 T" },
+    { id: "MAX", label: "Max" },
+];
+
 export default function AssetDetail() {
     const { assetId } = useParams();
     const navigate = useNavigate();
@@ -32,6 +41,7 @@ export default function AssetDetail() {
     const { data: dashboardData } = useDashboard(auth.currentUser);
 
     const [price, setPrice] = useState<MarketPrice>();
+    const [timeframe, setTimeframe] = useState<TimeFrame>("1M");
     const [history, setHistory] = useState<PriceHistoryPoint[]>([]);
     const [watched, setWatched] = useState(false);
     const [showTrade, setShowTrade] = useState(false);
@@ -49,7 +59,7 @@ export default function AssetDetail() {
             const currentLive = prices[asset.id];
             if (currentLive) {
                 setPrice(currentLive);
-                setHistory(getHistory(asset.id, currentLive.price));
+                setHistory(getHistory(asset.id, currentLive.price, timeframe));
             }
         }, 3000);
 
@@ -62,7 +72,25 @@ export default function AssetDetail() {
             unsubPrices();
             unsubWatchlist();
         };
-    }, [asset]);
+    }, [asset, timeframe]);
+
+    useEffect(() => {
+        if (!asset) return;
+        const currentPriceVal = price?.price ?? asset.basePrice;
+        setHistory(getHistory(asset.id, currentPriceVal, timeframe));
+
+        const handleHistoryUpdate = (e: Event) => {
+            const customEv = e as CustomEvent<{ assetId: string; timeframe: TimeFrame }>;
+            if (customEv.detail?.assetId === asset.id && customEv.detail?.timeframe === timeframe) {
+                setHistory(getHistory(asset.id, currentPriceVal, timeframe));
+            }
+        };
+
+        window.addEventListener("asetkita-history-updated", handleHistoryUpdate);
+        return () => {
+            window.removeEventListener("asetkita-history-updated", handleHistoryUpdate);
+        };
+    }, [asset, timeframe, price]);
 
     const meta = useMemo(
         () =>
@@ -102,6 +130,16 @@ export default function AssetDetail() {
             showToast(`✓ ${asset.name} dihapus dari Watchlist`, "info");
         }
     };
+
+    const rangeHigh = useMemo(() => {
+        if (!history.length) return price?.price ?? asset.basePrice;
+        return Math.max(...history.map((h) => h.value));
+    }, [history, price, asset]);
+
+    const rangeLow = useMemo(() => {
+        if (!history.length) return price?.price ?? asset.basePrice;
+        return Math.min(...history.map((h) => h.value));
+    }, [history, price, asset]);
 
     const isPositive = (price?.changePercent ?? 0) >= 0;
 
@@ -160,11 +198,37 @@ export default function AssetDetail() {
                         </div>
                     </div>
 
+                    {/* Timeframe Selector Pill Controls */}
+                    <div className="mt-5 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-[#1F3557] bg-[#08111F] p-2">
+                        <div className="flex items-center gap-1 overflow-x-auto">
+                            {timeframes.map((tf) => (
+                                <button
+                                    key={tf.id}
+                                    onClick={() => setTimeframe(tf.id)}
+                                    className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition ${
+                                        timeframe === tf.id
+                                            ? "bg-[#13C8FF] text-slate-950 shadow-md font-bold"
+                                            : "text-slate-400 hover:bg-white/5 hover:text-white"
+                                    }`}
+                                >
+                                    {tf.label}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="flex items-center gap-2 px-2 text-xs font-medium text-slate-400">
+                            <span className="relative flex h-2 w-2">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                            </span>
+                            <span className="text-emerald-400 font-semibold">LIVE</span>
+                        </div>
+                    </div>
+
                     {/* Chart Container */}
-                    <div className="mt-6 h-72 rounded-2xl border border-[#1F3557] bg-[#08111F] p-3">
+                    <div className="mt-4 h-72 rounded-2xl border border-[#1F3557] bg-[#08111F] p-3">
                         <ResponsiveContainer width="100%" height="100%">
                             <AreaChart data={history}>
-                                <XAxis dataKey="label" tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={false} tickLine={false} />
+                                <XAxis dataKey="label" tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={false} tickLine={false} minTickGap={45} />
                                 <Tooltip
                                     formatter={(value) => [formatRupiah(Number(value)), "Harga"]}
                                     contentStyle={{ background: "#08111F", border: "1px solid #1F3557", borderRadius: "12px" }}
@@ -175,17 +239,23 @@ export default function AssetDetail() {
                     </div>
 
                     {/* Asset Statistics Cards */}
-                    <div className="mt-6 grid gap-4 md:grid-cols-3">
-                        {[
-                            { label: "Market Cap", value: formatRupiah((price?.price ?? asset.basePrice) * 2500000) },
-                            { label: "Supply", value: asset.category === "kripto" ? "21.0M" : "Liquid" },
-                            { label: "ATH", value: asset.currency === "USD" ? `$${asset.ath}` : formatRupiah(asset.ath) },
-                        ].map((item) => (
-                            <div key={item.label} className="rounded-2xl border border-[#1F3557] bg-[#08111F] p-4">
-                                <p className="text-xs text-slate-400">{item.label}</p>
-                                <p className="mt-1 font-semibold text-white text-base">{item.value}</p>
-                            </div>
-                        ))}
+                    <div className="mt-6 grid gap-4 grid-cols-2 md:grid-cols-4">
+                        <div className="rounded-2xl border border-[#1F3557] bg-[#08111F] p-4">
+                            <p className="text-xs text-slate-400">Tertinggi ({timeframe})</p>
+                            <p className="mt-1 font-semibold text-emerald-400 text-base">{formatRupiah(rangeHigh)}</p>
+                        </div>
+                        <div className="rounded-2xl border border-[#1F3557] bg-[#08111F] p-4">
+                            <p className="text-xs text-slate-400">Terendah ({timeframe})</p>
+                            <p className="mt-1 font-semibold text-rose-400 text-base">{formatRupiah(rangeLow)}</p>
+                        </div>
+                        <div className="rounded-2xl border border-[#1F3557] bg-[#08111F] p-4">
+                            <p className="text-xs text-slate-400">ATH (Puncak Harga)</p>
+                            <p className="mt-1 font-semibold text-amber-400 text-base">{formatRupiah(asset.ath)}</p>
+                        </div>
+                        <div className="rounded-2xl border border-[#1F3557] bg-[#08111F] p-4">
+                            <p className="text-xs text-slate-400">Market Cap</p>
+                            <p className="mt-1 font-semibold text-white text-base">{formatRupiah((price?.price ?? asset.basePrice) * 2500000)}</p>
+                        </div>
                     </div>
 
                     <div className="mt-6 rounded-2xl border border-[#1F3557] bg-[#08111F] p-4">

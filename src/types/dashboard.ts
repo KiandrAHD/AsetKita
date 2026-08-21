@@ -19,6 +19,7 @@ export type MarketPrice = {
     changePercent: number;
     updatedAt?: Date;
 };
+export type TimeFrame = "1D" | "1W" | "1M" | "1Y" | "10Y" | "MAX";
 export type PriceHistoryPoint = { label: string; value: number; at?: Date };
 export type Holding = {
     id: string;

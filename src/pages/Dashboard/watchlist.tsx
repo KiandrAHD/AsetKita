@@ -5,7 +5,6 @@ import PageFrame from "@/components/Dashboard/PageFrame";
 import { EmptyState } from "@/components/Dashboard/State";
 import { assets } from "@/data/assets";
 import {
-    getMarketPrices,
     getWatchlist,
     subscribeRealTimeMarketPrices,
     subscribeWatchlist,

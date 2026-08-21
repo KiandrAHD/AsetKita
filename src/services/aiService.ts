@@ -209,9 +209,6 @@ async function getAIChatResponseFallback(
             return text.trim();
 
         } catch (err: unknown) {
-            const isAuthOrQuotaError = err instanceof Error && 
-                (err.message.includes("429") || err.message.includes("401") || err.message.includes("403") || err.message.includes("404") || err.message.includes("tidak valid"));
-            
             if (attempts >= GEMINI_KEYS.length) {
                 throw err;
             }
